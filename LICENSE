@@ -1,19 +1,34 @@
+```txt id="txh34j"
 ================================================================================
-Copyright (c) 2026 Emir Can Turan (OSLO Team). All rights reserved.
-
-CONFIDENTIAL AND PROPRIETARY.
+Copyright © 2026 Emir Can Turan (OSLO Team). All Rights Reserved.
 ================================================================================
 
-This software and its source code are the sole property of Emir Can Turan 
-(OSLO Team). Unauthorized copying, modification, distribution, reverse 
-engineering, public display, or commercial use of this software or any portion 
-of its source code, via any medium, is strictly prohibited without the express 
-prior written permission of the copyright holder.
+OSLO Browser and its source code are proprietary software owned by
+Emir Can Turan (OSLO Team).
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+This repository is source-available for viewing, inspection, and
+development transparency purposes only.
+
+You may:
+
+- View the source code
+- Fork the repository for personal inspection and review
+
+You may NOT:
+
+- Copy, reuse, or incorporate the code into other projects
+- Modify and redistribute the software or its source code
+- Commercially use the software or its components
+- Publicly distribute derivative works
+
+without prior written permission from the copyright holder.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
