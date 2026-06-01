@@ -151,8 +151,6 @@ export const translations = {
     'cmd-open-settings-desc': 'OSLO ayarları',
     'cmd-open-history': 'Geçmişi aç',
     'cmd-open-history-desc': 'Tarama geçmişi',
-    'cmd-open-bookmarks': 'Yer imlerini aç',
-    'cmd-open-bookmarks-desc': 'Kayıtlı yer imleri',
     'cmd-open-downloads': 'İndirmeleri aç',
     'cmd-open-downloads-desc': 'İndirme listesi',
     'cmd-new-tab': 'Yeni sekme aç',
@@ -167,8 +165,8 @@ export const translations = {
     'settings-export-success': 'Ayarlar başarıyla dışa aktarıldı!',
     'settings-import-success': 'Ayarlar başarıyla içe aktarıldı!\nDeğişikliklerin tamamen uygulanması için sayfa yenilenecek.',
     'settings-import-error': 'Ayarlar içe aktarılamadı: {error}',
-    'settings-reset-confirm': 'Tüm tarayıcı ayarlarını fabrika varsayılanlarına sıfırlamak ve kayıtlı yer imlerini silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.',
-    'settings-reset-success': 'Tüm ayarlar ve kayıtlı yer imleri başarıyla sıfırlandı!',
+    'settings-reset-confirm': 'Tüm ayarları, yer imlerini, geçmişi, indirmeleri, çalışma alanlarını, oturumları, izinleri, sertifika istisnalarını, parolaları ve yerel sayfa verilerini fabrika varsayılanlarına sıfırlamak istediğinizden emin misiniz? Bu işlem geri alınamaz.',
+    'settings-reset-success': 'Tüm ayarlar ve kayıtlı tarayıcı verileri başarıyla sıfırlandı!',
     'bookmarks-import-success': 'Yer imleri başarıyla içe aktarıldı!\n\n📂 Eklenen Klasör: {folders}\n🔗 Eklenen Bağlantı: {links}',
     'bookmarks-export-success': 'Yer imleri başarıyla dışa aktarıldı!\n\n📂 Aktarılan Klasör: {folders}\n🔗 Aktarılan Bağlantı: {links}',
     'permission-msg': 'bildirim göndermek istiyor.',
@@ -515,8 +513,6 @@ export const translations = {
     'cmd-open-settings-desc': 'OSLO settings',
     'cmd-open-history': 'Open History',
     'cmd-open-history-desc': 'Browsing history',
-    'cmd-open-bookmarks': 'Open Bookmarks',
-    'cmd-open-bookmarks-desc': 'Saved bookmarks',
     'cmd-open-downloads': 'Open Downloads',
     'cmd-open-downloads-desc': 'Download list',
     'cmd-new-tab': 'Open New Tab',
@@ -531,8 +527,8 @@ export const translations = {
     'settings-export-success': 'Settings exported successfully!',
     'settings-import-success': 'Settings imported successfully!\nThe page will reload to apply the changes completely.',
     'settings-import-error': 'Failed to import settings: {error}',
-    'settings-reset-confirm': 'Are you sure you want to reset all browser settings to factory defaults and delete saved bookmarks? This action cannot be undone.',
-    'settings-reset-success': 'All settings and saved bookmarks have been successfully reset!',
+    'settings-reset-confirm': 'Are you sure you want to reset all settings, bookmarks, history, downloads, spaces, sessions, permissions, certificate exceptions, passwords, and local page data to factory defaults? This action cannot be undone.',
+    'settings-reset-success': 'All settings and saved browser data have been successfully reset!',
     'bookmarks-import-success': 'Bookmarks imported successfully!\n\n📂 Folders added: {folders}\n🔗 Links added: {links}',
     'bookmarks-export-success': 'Bookmarks exported successfully!\n\n📂 Folders exported: {folders}\n🔗 Links exported: {links}',
     'permission-msg': 'wants to send notifications.',
@@ -879,8 +875,6 @@ export const translations = {
     'cmd-open-settings-desc': 'Réglages OSLO',
     'cmd-open-history': 'Ouvrir l’historique',
     'cmd-open-history-desc': 'Historique de navigation',
-    'cmd-open-bookmarks': 'Ouvrir les favoris',
-    'cmd-open-bookmarks-desc': 'Favoris enregistrés',
     'cmd-open-downloads': 'Ouvrir les téléchargements',
     'cmd-open-downloads-desc': 'Liste des téléchargements',
     'cmd-new-tab': 'Ouvrir un nouvel onglet',
@@ -895,8 +889,8 @@ export const translations = {
     'settings-export-success': 'Paramètres exportés avec succès !',
     'settings-import-success': 'Paramètres importés avec succès ! La page va s\'actualiser pour appliquer les changements.',
     'settings-import-error': 'Échec de l\'importation des paramètres : {error}',
-    'settings-reset-confirm': 'Êtes-vous sûr de vouloir réinitialiser tous les paramètres du navigateur et supprimer les favoris enregistrés ? Cette action est irréversible.',
-    'settings-reset-success': 'Tous les paramètres et favoris enregistrés ont été réinitialisés avec succès !',
+    'settings-reset-confirm': 'Voulez-vous réinitialiser tous les paramètres, favoris, historiques, téléchargements, espaces, sessions, autorisations, exceptions de certificat, mots de passe et données locales aux valeurs par défaut ? Cette action est irréversible.',
+    'settings-reset-success': 'Tous les paramètres et les données enregistrées du navigateur ont été réinitialisés avec succès !',
     'bookmarks-import-success': 'Favoris importés avec succès !\n\n📂 Dossiers ajoutés : {folders}\n🔗 Liens ajoutés : {links}',
     'bookmarks-export-success': 'Favoris exportés avec succès !\n\n📂 Dossiers exportés : {folders}\n🔗 Liens exportés : {links}',
     'permission-msg': 'veut envoyer des notifications.',
@@ -1134,9 +1128,6 @@ export function applyLanguage(lang) {
 
   const incognitoBtn = document.getElementById('incognito-btn');
   if (incognitoBtn) incognitoBtn.title = translations[state.currentLang]['incognito-tab'];
-
-  const bookmarksBtn = document.getElementById('bookmarks-btn');
-  if (bookmarksBtn) bookmarksBtn.title = translations[state.currentLang]['bookmarks'];
 
   const historyBtn = document.getElementById('history-btn');
   if (historyBtn) historyBtn.title = translations[state.currentLang]['history'];

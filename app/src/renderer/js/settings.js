@@ -1279,7 +1279,7 @@ export function initSettings() {
   if (resetSettingsBtn) {
     resetSettingsBtn.addEventListener('click', () => {
       const title = translations[state.currentLang]['reset-all-settings'] || 'Fabrika Ayarlarına Sıfırla';
-      const confirmMsg = translations[state.currentLang]['settings-reset-confirm'] || 'Tüm tarayıcı ayarlarını fabrika varsayılanlerine sıfırlamak istediğinizden emin misiniz? Bu işlem geri alınamaz.';
+      const confirmMsg = translations[state.currentLang]['settings-reset-confirm'] || 'Tüm tarayıcı verilerini fabrika varsayılanlarına sıfırlamak istediğinizden emin misiniz? Bu işlem geri alınamaz.';
       showCustomConfirm(title, confirmMsg).then((confirmed) => {
         if (confirmed) {
           window.oslo.resetSettings().then((updated) => {
@@ -1287,7 +1287,7 @@ export function initSettings() {
               Object.entries(updated).forEach(([key, value]) => {
                 applySettingChange(key, value);
               });
-              const successMsg = translations[state.currentLang]['settings-reset-success'] || 'Tüm ayarlar başarıyla sıfırlandı!';
+              const successMsg = translations[state.currentLang]['settings-reset-success'] || 'Tüm ayarlar ve kayıtlı tarayıcı verileri başarıyla sıfırlandı!';
               showCustomAlert(title, successMsg).then(() => {
                 window.location.reload();
               });

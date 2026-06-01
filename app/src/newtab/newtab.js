@@ -37,6 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
       'weather-storm': '⛈️ Gökgürültülü Fırtına',
       'weather-overcast': '☁️ Bulutlu',
       'url-required': 'Lütfen bir URL adresi girin.',
+      'url-invalid': 'Lütfen geçerli bir http veya https URL adresi girin.',
       'delete': 'Sil',
       'edit': 'Düzenle',
       'new-tab': 'Yeni Sekme',
@@ -73,6 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
       'weather-storm': '⛈️ Thunderstorm',
       'weather-overcast': '☁️ Cloudy',
       'url-required': 'Please enter a URL address.',
+      'url-invalid': 'Please enter a valid http or https URL address.',
       'delete': 'Delete',
       'edit': 'Edit',
       'new-tab': 'New Tab',
@@ -109,6 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
       'weather-storm': '⛈️ Orage',
       'weather-overcast': '☁️ Nuageux',
       'url-required': 'Veuillez saisir une adresse URL.',
+      'url-invalid': 'Veuillez saisir une adresse URL http ou https valide.',
       'delete': 'Supprimer',
       'edit': 'Modifier',
       'new-tab': 'Nouvel Onglet',
@@ -152,6 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const greetingEl = document.getElementById('greeting');
   const searchForm = document.getElementById('search-form');
   const searchInput = document.getElementById('search-input');
+  const autocompleteDropdown = document.getElementById('newtab-autocomplete-dropdown');
   const weatherTemp = document.getElementById('weather-temp');
   const weatherDesc = document.getElementById('weather-desc');
   const weatherCity = document.getElementById('weather-city');
@@ -459,20 +463,26 @@ document.addEventListener('DOMContentLoaded', () => {
     return searchUrl + encodeURIComponent(query);
   }
 
-  searchForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const query = searchInput.value.trim();
+  function navigateToSearchValue(value) {
+    const query = String(value || '').trim();
     if (!query) return;
 
+    closeNewtabAutocomplete();
     if (window.oslo && typeof window.oslo.getSearchEngine === 'function') {
       window.oslo.getSearchEngine().then(engine => {
         window.location.href = formatSearch(query, engine);
       }).catch(() => {
-        window.location.href = formatSearch(query, 'google');
+        window.location.href = formatSearch(query, activeSettings.searchEngine || 'google');
       });
     } else {
-      window.location.href = formatSearch(query, 'google');
+      window.location.href = formatSearch(query, activeSettings.searchEngine || 'google');
     }
+  }
+
+  searchForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const query = searchInput.value.trim();
+    navigateToSearchValue(query);
   });
 
   function applyLanguage() {
@@ -543,11 +553,59 @@ document.addEventListener('DOMContentLoaded', () => {
     { name: 'Reddit', url: 'https://www.reddit.com' }
   ];
 
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    }[char]));
+  }
+
+  function escapeAttribute(value) {
+    return escapeHtml(value).replace(/`/g, '&#96;');
+  }
+
+  function normalizeShortcutUrl(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (/^[a-z][a-z0-9+.-]*:/i.test(raw) && !/^https?:\/\//i.test(raw)) return '';
+
+    const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+      return parsed.href;
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function normalizeShortcut(value) {
+    if (!value || typeof value !== 'object') return null;
+    const url = normalizeShortcutUrl(value.url);
+    if (!url) return null;
+
+    let name = String(value.name || '').trim();
+    if (!name) {
+      try {
+        name = new URL(url).hostname || url;
+      } catch (e) {
+        name = url;
+      }
+    }
+    return { name, url };
+  }
+
   let shortcuts = [];
   try {
     const saved = localStorage.getItem('newtab-shortcuts');
     if (saved) {
-      shortcuts = JSON.parse(saved);
+      const parsed = JSON.parse(saved);
+      shortcuts = Array.isArray(parsed)
+        ? parsed.map(normalizeShortcut).filter(Boolean)
+        : [...defaultShortcuts];
     } else {
       shortcuts = [...defaultShortcuts];
     }
@@ -557,8 +615,270 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let editModeActive = false;
   let editingIndex = null;
+  let selectedNewtabSuggestionIndex = -1;
+  let currentNewtabSuggestions = [];
+  let newtabAutocompleteToken = 0;
+
+  function searchSuggestionIcon() {
+    return `
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+        <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+      </svg>
+    `;
+  }
+
+  function linkSuggestionIcon() {
+    return `
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+        <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/>
+      </svg>
+    `;
+  }
+
+  function bookmarkSuggestionIcon() {
+    return `
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+        <path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
+      </svg>
+    `;
+  }
+
+  function historySuggestionIcon() {
+    return `
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+        <path d="M13 3c-4.4 0-8 3.6-8 8H2.5l3.3 3.3.1.2L9.5 11H7c0-3.3 2.7-6 6-6s6 2.7 6 6-2.7 6-6 6c-1.7 0-3.2-.7-4.2-1.8l-1.4 1.4C8.8 18.1 10.8 19 13 19c4.4 0 8-3.6 8-8s-3.6-8-8-8zm-1 4v5l4.2 2.5.8-1.3-3.5-2.1V7H12z"/>
+      </svg>
+    `;
+  }
+
+  function getSearchEngineName(engine) {
+    const names = {
+      google: 'Google',
+      duckduckgo: 'DuckDuckGo',
+      bing: 'Bing',
+      yahoo: 'Yahoo',
+      yandex: 'Yandex',
+      brave: 'Brave',
+      ecosia: 'Ecosia',
+      startpage: 'Startpage'
+    };
+    return names[engine] || 'DuckDuckGo';
+  }
+
+  function getSearchSuggestionTitle(query, engineName) {
+    if (activeLang === 'en') return `Search "${query}" with ${engineName}`;
+    if (activeLang === 'fr') return `Rechercher "${query}" avec ${engineName}`;
+    return `"${query}" ile ${engineName} ara`;
+  }
+
+  function closeNewtabAutocomplete() {
+    newtabAutocompleteToken++;
+    selectedNewtabSuggestionIndex = -1;
+    currentNewtabSuggestions = [];
+    if (autocompleteDropdown) {
+      autocompleteDropdown.style.display = 'none';
+      autocompleteDropdown.innerHTML = '';
+    }
+  }
+
+  function isNewtabUrl(url) {
+    const value = String(url || '');
+    return value === 'oslo://newtab' || value.includes('/newtab/newtab.html') || value.includes('\\newtab\\newtab.html');
+  }
+
+  function isSafeSuggestionUrl(url) {
+    const value = String(url || '').trim();
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'file:';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function suggestionMatches(item, cleanText) {
+    return (item.title || '').toLowerCase().includes(cleanText) ||
+      (item.url || '').toLowerCase().includes(cleanText) ||
+      (item.name || '').toLowerCase().includes(cleanText);
+  }
+
+  function addUrlSuggestion(suggestions, seenUrls, suggestion) {
+    const url = String(suggestion.url || '').trim();
+    if (!url || isNewtabUrl(url) || !isSafeSuggestionUrl(url)) return;
+
+    const key = url.toLowerCase();
+    if (seenUrls.has(key)) return;
+
+    seenUrls.add(key);
+    suggestions.push(suggestion);
+  }
+
+  function buildNewtabSuggestions(text, historyItems, bookmarks, engine) {
+    const cleanText = text.trim().toLowerCase();
+    const engineName = getSearchEngineName(engine);
+    const suggestions = [{
+      type: 'search',
+      title: getSearchSuggestionTitle(text, engineName),
+      url: text,
+      query: text,
+      icon: searchSuggestionIcon()
+    }];
+    const seenUrls = new Set();
+
+    shortcuts
+      .map(normalizeShortcut)
+      .filter(Boolean)
+      .filter(item => suggestionMatches(item, cleanText))
+      .slice(0, 4)
+      .forEach(item => {
+        addUrlSuggestion(suggestions, seenUrls, {
+          type: 'shortcut',
+          title: item.name,
+          url: item.url,
+          icon: linkSuggestionIcon()
+        });
+      });
+
+    (bookmarks || [])
+      .filter(item => item && !item.isFolder && suggestionMatches(item, cleanText))
+      .slice(0, 5)
+      .forEach(item => {
+        addUrlSuggestion(suggestions, seenUrls, {
+          type: 'bookmark',
+          title: item.title || item.url,
+          url: item.url,
+          icon: bookmarkSuggestionIcon()
+        });
+      });
+
+    (historyItems || [])
+      .filter(item => item && suggestionMatches(item, cleanText))
+      .slice(0, 5)
+      .forEach(item => {
+        addUrlSuggestion(suggestions, seenUrls, {
+          type: 'history',
+          title: item.title || item.url,
+          url: item.url,
+          icon: historySuggestionIcon()
+        });
+      });
+
+    return suggestions.slice(0, 8);
+  }
+
+  function renderNewtabAutocomplete() {
+    if (!autocompleteDropdown) return;
+
+    if (currentNewtabSuggestions.length === 0) {
+      closeNewtabAutocomplete();
+      return;
+    }
+
+    autocompleteDropdown.innerHTML = '';
+    currentNewtabSuggestions.forEach((suggestion, index) => {
+      const item = document.createElement('div');
+      item.className = `newtab-autocomplete-item ${index === selectedNewtabSuggestionIndex ? 'selected' : ''}`;
+      item.innerHTML = `
+        <div class="newtab-autocomplete-icon">${suggestion.icon}</div>
+        <div class="newtab-autocomplete-text">
+          <div class="newtab-autocomplete-title">${escapeHtml(suggestion.title)}</div>
+          <div class="newtab-autocomplete-url">${escapeHtml(suggestion.url)}</div>
+        </div>
+      `;
+
+      item.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+      });
+      item.addEventListener('click', () => {
+        activateNewtabSuggestion(suggestion);
+      });
+
+      autocompleteDropdown.appendChild(item);
+    });
+
+    autocompleteDropdown.style.display = 'block';
+  }
+
+  function showNewtabAutocomplete(value) {
+    const text = String(value || '').trim();
+    if (!text) {
+      closeNewtabAutocomplete();
+      return;
+    }
+
+    const token = ++newtabAutocompleteToken;
+    const historyPromise = window.oslo && typeof window.oslo.getHistory === 'function'
+      ? window.oslo.getHistory().catch(() => [])
+      : Promise.resolve([]);
+    const bookmarksPromise = window.oslo && typeof window.oslo.getBookmarks === 'function'
+      ? window.oslo.getBookmarks().catch(() => [])
+      : Promise.resolve([]);
+    const enginePromise = window.oslo && typeof window.oslo.getSearchEngine === 'function'
+      ? window.oslo.getSearchEngine().catch(() => activeSettings.searchEngine || 'duckduckgo')
+      : Promise.resolve(activeSettings.searchEngine || 'duckduckgo');
+
+    Promise.all([historyPromise, bookmarksPromise, enginePromise]).then(([historyItems, bookmarks, engine]) => {
+      if (token !== newtabAutocompleteToken || searchInput.value.trim() !== text) return;
+
+      currentNewtabSuggestions = buildNewtabSuggestions(text, historyItems, bookmarks, engine);
+      selectedNewtabSuggestionIndex = -1;
+      renderNewtabAutocomplete();
+    });
+  }
+
+  function activateNewtabSuggestion(suggestion) {
+    if (!suggestion) return;
+
+    if (suggestion.type === 'search') {
+      navigateToSearchValue(suggestion.query || suggestion.url);
+      return;
+    }
+
+    if (suggestion.url && isSafeSuggestionUrl(suggestion.url)) {
+      closeNewtabAutocomplete();
+      window.location.href = suggestion.url;
+    }
+  }
+
+  searchInput.addEventListener('input', () => {
+    showNewtabAutocomplete(searchInput.value);
+  });
+
+  searchInput.addEventListener('focus', () => {
+    if (searchInput.value.trim()) {
+      showNewtabAutocomplete(searchInput.value);
+    }
+  });
+
+  searchInput.addEventListener('keydown', (event) => {
+    const isOpen = autocompleteDropdown && autocompleteDropdown.style.display === 'block';
+    if (!isOpen) return;
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      selectedNewtabSuggestionIndex = (selectedNewtabSuggestionIndex + 1) % currentNewtabSuggestions.length;
+      renderNewtabAutocomplete();
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      selectedNewtabSuggestionIndex = (selectedNewtabSuggestionIndex - 1 + currentNewtabSuggestions.length) % currentNewtabSuggestions.length;
+      renderNewtabAutocomplete();
+    } else if (event.key === 'Enter' && selectedNewtabSuggestionIndex >= 0) {
+      event.preventDefault();
+      activateNewtabSuggestion(currentNewtabSuggestions[selectedNewtabSuggestionIndex]);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      closeNewtabAutocomplete();
+    }
+  });
+
+  document.addEventListener('click', (event) => {
+    if (!event.target.closest('.search-box')) {
+      closeNewtabAutocomplete();
+    }
+  });
 
   function saveShortcuts() {
+    shortcuts = shortcuts.map(normalizeShortcut).filter(Boolean);
     localStorage.setItem('newtab-shortcuts', JSON.stringify(shortcuts));
     renderShortcutsGrid();
   }
@@ -566,17 +886,21 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderShortcutsGrid() {
     shortcutsGrid.innerHTML = '';
     
-    shortcuts.forEach((item, index) => {
+    shortcuts.forEach((rawItem, index) => {
+      const item = normalizeShortcut(rawItem);
+      if (!item) return;
+
       let domain = '';
       try {
         domain = new URL(item.url).hostname;
       } catch (e) {
-        domain = item.url;
+        domain = '';
       }
       
-      const faviconUrl = `https://www.google.com/s2/favicons?sz=64&domain=${domain}`;
+      const faviconUrl = `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(domain)}`;
       const delTitle = newtabTranslations[activeLang]['delete'];
       const editTitle = newtabTranslations[activeLang]['edit'];
+      const fallbackLetter = item.name.trim().charAt(0).toUpperCase() || '?';
       
       const card = document.createElement('a');
       card.href = item.url;
@@ -585,12 +909,12 @@ document.addEventListener('DOMContentLoaded', () => {
       
       card.innerHTML = `
         <div class="shortcut-icon" style="background-color: rgba(255, 255, 255, 0.05); color: #fff;">
-          <img src="${faviconUrl}" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" style="width: 24px; height: 24px; object-fit: contain;">
-          <span class="fallback-letter" style="display: none; font-size: 18px; font-weight: bold; text-transform: uppercase;">${item.name.charAt(0)}</span>
+          <img src="${escapeAttribute(faviconUrl)}" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" style="width: 24px; height: 24px; object-fit: contain;">
+          <span class="fallback-letter" style="display: none; font-size: 18px; font-weight: bold; text-transform: uppercase;">${escapeHtml(fallbackLetter)}</span>
         </div>
-        <span class="shortcut-name">${item.name}</span>
-        <button class="card-action-btn delete-btn" title="${delTitle}">&times;</button>
-        <button class="card-action-btn edit-btn" title="${editTitle}">
+        <span class="shortcut-name">${escapeHtml(item.name)}</span>
+        <button class="card-action-btn delete-btn" title="${escapeAttribute(delTitle)}">&times;</button>
+        <button class="card-action-btn edit-btn" title="${escapeAttribute(editTitle)}">
           <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
             <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
           </svg>
@@ -631,7 +955,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor"/>
         </svg>
       </div>
-      <span class="shortcut-name">${addText}</span>
+      <span class="shortcut-name">${escapeHtml(addText)}</span>
     `;
     addCard.addEventListener('click', () => {
       openModal(null);
@@ -647,8 +971,9 @@ document.addEventListener('DOMContentLoaded', () => {
       editingIndex = null;
     } else {
       modalTitle.textContent = newtabTranslations[activeLang]['modal-title-edit'];
-      modalNameInput.value = shortcuts[index].name;
-      modalUrlInput.value = shortcuts[index].url;
+      const shortcut = normalizeShortcut(shortcuts[index]) || { name: '', url: '' };
+      modalNameInput.value = shortcut.name;
+      modalUrlInput.value = shortcut.url;
       editingIndex = index;
     }
     shortcutModal.classList.add('open');
@@ -689,11 +1014,20 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    if (!/^https?:\/\//i.test(url)) {
-      url = 'https://' + url;
+    url = normalizeShortcutUrl(url);
+    if (!url) {
+      alert(newtabTranslations[activeLang]['url-invalid']);
+      return;
     }
 
-    const finalName = name || new URL(url).hostname || url;
+    let finalName = name;
+    if (!finalName) {
+      try {
+        finalName = new URL(url).hostname || url;
+      } catch (e) {
+        finalName = url;
+      }
+    }
 
     if (editingIndex === null) {
       shortcuts.push({ name: finalName, url });

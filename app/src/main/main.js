@@ -3077,7 +3077,36 @@ ipcMain.handle('settings-reset', async (event) => {
   try {
     const defaults = createDefaultSettings();
     settingsStore.replace(defaults);
-    bookmarksStore.set('bookmarks', []);
+    bookmarksStore.replace({ bookmarks: [] });
+    historyStore.replace({ history: [] });
+    downloadsStore.replace({ downloads: [] });
+    spacesStore.replace({ spaces: ['Genel'] });
+    telemetryStore.replace({ events: [], crashes: [] });
+    faviconCacheStore.replace({ cache: {} });
+    sessionStore.replace({ tabs: [], tabOrders: {} });
+    passwordsStore.replace({ passwords: [] });
+    certificateExceptionsStore.replace({ exceptions: {} });
+    passwordBreachCacheStore.replace({ cache: {} });
+    permissionsStore.replace({ permissions: {} });
+    tabOrders = {};
+
+    await Promise.all(getManagedSessions(true).map(async (profileSession) => {
+      await profileSession.clearCache();
+      await profileSession.clearStorageData({
+        storages: [
+          'appcache',
+          'cookies',
+          'filesystem',
+          'indexdb',
+          'localstorage',
+          'shadercache',
+          'websql',
+          'serviceworkers',
+          'cachestorage'
+        ]
+      });
+    }));
+
     for (const [key, value] of Object.entries(defaults)) {
       applySetting(key, value);
     }
@@ -3626,8 +3655,8 @@ function optimizePerformanceForHardware() {
         const events = telemetryStore.get('events') || [];
         events.push({
           timestamp: Date.now(),
-          event: 'hardware-optimize',
-          details: {
+          action: 'hardware-optimize',
+          data: {
             ramGB: totalMemoryGB,
             cores: cpuCores,
             message: 'Performance settings optimized for low-end hardware.'

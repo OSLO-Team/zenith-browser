@@ -176,6 +176,8 @@ body.reduce-motion *::after {
 .search-box {
   width: 100%;
   max-width: 620px;
+  position: relative;
+  z-index: 8;
 }
 
 .search-input-wrapper {
@@ -221,6 +223,85 @@ body.reduce-motion *::after {
 
 #search-input::placeholder {
   color: rgba(255, 255, 255, 0.3);
+}
+
+.newtab-autocomplete-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  right: 0;
+  max-height: min(320px, max(180px, calc(100vh - 420px)));
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+  background-color: rgba(18, 20, 24, 0.96);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.38), 0 0 0 1px rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  text-align: left;
+  z-index: 30;
+}
+
+.newtab-autocomplete-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 50px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  color: var(--text-main);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.newtab-autocomplete-item:hover,
+.newtab-autocomplete-item.selected {
+  background-color: rgba(0, 221, 255, 0.12);
+  color: var(--accent-cyan);
+}
+
+.newtab-autocomplete-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.newtab-autocomplete-item:hover .newtab-autocomplete-icon,
+.newtab-autocomplete-item.selected .newtab-autocomplete-icon {
+  color: var(--accent-cyan);
+}
+
+.newtab-autocomplete-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.newtab-autocomplete-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.newtab-autocomplete-url {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Shortcuts grid section */
@@ -398,6 +479,27 @@ body.light-mode #search-input {
 
 body.light-mode #search-input::placeholder {
   color: #9ca3af;
+}
+
+body.light-mode .newtab-autocomplete-dropdown {
+  background-color: rgba(255, 255, 255, 0.96);
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(15, 23, 42, 0.02);
+}
+
+body.light-mode .newtab-autocomplete-item {
+  color: #111827;
+}
+
+body.light-mode .newtab-autocomplete-item:hover,
+body.light-mode .newtab-autocomplete-item.selected {
+  background-color: rgba(0, 102, 255, 0.1);
+  color: var(--accent-blue);
+}
+
+body.light-mode .newtab-autocomplete-url,
+body.light-mode .newtab-autocomplete-icon {
+  color: #6b7280;
 }
 
 body.light-mode .shortcut-name {
@@ -733,6 +835,7 @@ body.os-windows.light-mode {
 }
 
 body.os-windows .search-input-wrapper,
+body.os-windows .newtab-autocomplete-dropdown,
 body.os-windows .shortcut-card,
 body.os-windows .weather-card,
 body.os-windows .edit-mode-btn,

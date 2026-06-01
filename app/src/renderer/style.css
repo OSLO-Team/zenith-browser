@@ -2433,10 +2433,7 @@ body.topbar-auto-hide .bookmarks-bar {
 }
 
 .autocomplete-dropdown {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
+  position: fixed;
   background: var(--bg-glass);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -2444,7 +2441,7 @@ body.topbar-auto-hide .bookmarks-bar {
   border-radius: 10px;
   max-height: 280px;
   overflow-y: auto;
-  z-index: 1000;
+  z-index: 12000;
   box-shadow: var(--shadow-premium);
   padding: 6px;
 }

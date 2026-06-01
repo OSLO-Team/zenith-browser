@@ -37,7 +37,7 @@
         }
       ],
       "icon": "assets/logo.png",
-      "sign": null,
+      "forceCodeSigning": true,
       "publish": [
         {
           "provider": "github",

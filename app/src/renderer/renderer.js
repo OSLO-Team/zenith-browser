@@ -71,7 +71,6 @@ const sidebarToggle = document.getElementById('sidebar-toggle');
 const newTabBtn = document.getElementById('new-tab-btn');
 const incognitoBtn = document.getElementById('incognito-btn');
 
-const bookmarksBtn = document.getElementById('bookmarks-btn');
 const historyBtn = document.getElementById('history-btn');
 const downloadsBtn = document.getElementById('downloads-btn');
 const settingsBtn = document.getElementById('settings-btn');
@@ -180,7 +179,10 @@ export function sendBounds() {
     && tabContextMenu.dataset.overlapsContent === 'true';
   const isDropdownOpen = !!document.querySelector('.bookmarks-bar-dropdown');
 
-  const isAutocompleteOpen = document.getElementById('autocomplete-dropdown')?.style.display === 'block';
+  const autocompleteDropdown = document.getElementById('autocomplete-dropdown');
+  const isAutocompleteOverPreview = autocompleteDropdown?.style.display === 'block'
+    && autocompleteDropdown.dataset.overlapsContent === 'true'
+    && contentArea.classList.contains('content-preview-active');
   const isHistoryOpen = document.getElementById('history-panel')?.classList.contains('open');
   const isSettingsOpen = document.getElementById('settings-overlay')?.classList.contains('open');
   const isDownloadsOpen = document.getElementById('downloads-overlay')?.classList.contains('open');
@@ -199,7 +201,7 @@ export function sendBounds() {
     isSpaceDeleteOpen ||
     isTabContextMenuOverContent ||
     isDropdownOpen ||
-    isAutocompleteOpen ||
+    isAutocompleteOverPreview ||
     isHistoryOpen ||
     isSettingsOpen ||
     isDownloadsOpen ||
@@ -228,7 +230,10 @@ if (contentArea) {
 }
 
 window.addEventListener('resize', () => {
-  requestAnimationFrame(sendBounds);
+  requestAnimationFrame(() => {
+    positionAutocompleteDropdown();
+    sendBounds();
+  });
 });
 
 // --- Window Controls ---
@@ -311,11 +316,8 @@ if (addressInput) {
           window.oslo.navigate(state.activeTabId, val);
         }
       }
-      if (dropdown) dropdown.style.display = 'none';
-      currentSuggestions = [];
-      selectedSuggestionIndex = -1;
+      closeAutocompleteDropdown();
       addressInput.blur();
-      sendBounds();
     } else if (e.key === 'ArrowDown' && isOpen) {
       e.preventDefault();
       selectedSuggestionIndex = (selectedSuggestionIndex + 1) % currentSuggestions.length;
@@ -327,10 +329,7 @@ if (addressInput) {
     } else if (e.key === 'Escape') {
       if (isOpen) {
         e.preventDefault();
-        dropdown.style.display = 'none';
-        currentSuggestions = [];
-        selectedSuggestionIndex = -1;
-        sendBounds();
+        closeAutocompleteDropdown();
       }
     }
   });
@@ -386,20 +385,6 @@ if (addBookmarkBtn) {
 }
 
 
-
-// --- Side Panels Toggles ---
-if (bookmarksBtn) {
-  bookmarksBtn.addEventListener('click', () => {
-    bookmarksPanel?.classList.toggle('open');
-    historyPanel?.classList.remove('open');
-    settingsOverlay?.classList.remove('open');
-    downloadsOverlay?.classList.remove('open');
-    if (bookmarksPanel?.classList.contains('open')) {
-      renderBookmarks();
-    }
-    sendBounds();
-  });
-}
 
 if (historyBtn) {
   historyBtn.addEventListener('click', () => {
@@ -524,7 +509,7 @@ document.getElementById('btn-save-bookmark-edit')?.addEventListener('click', () 
 });
 
 // Dismiss context menu on click
-document.addEventListener('click', () => {
+document.addEventListener('click', (event) => {
   let changed = false;
   let shouldClearPreview = false;
   if (tabContextMenu && tabContextMenu.style.display === 'block') {
@@ -543,10 +528,9 @@ document.addEventListener('click', () => {
     changed = true;
   }
   const autocompleteDropdown = document.getElementById('autocomplete-dropdown');
-  if (autocompleteDropdown && autocompleteDropdown.style.display === 'block') {
-    autocompleteDropdown.style.display = 'none';
-    currentSuggestions = [];
-    selectedSuggestionIndex = -1;
+  const clickedAutocompleteSurface = event.target.closest?.('.address-bar-container, .autocomplete-dropdown');
+  if (autocompleteDropdown && autocompleteDropdown.style.display === 'block' && !clickedAutocompleteSurface) {
+    closeAutocompleteDropdown();
     changed = true;
   }
   if (changed) {
@@ -914,6 +898,46 @@ function updateSecurityIndicator() {
 // Helpers: Autocomplete Suggestions
 let selectedSuggestionIndex = -1;
 let currentSuggestions = [];
+let autocompleteRequestToken = 0;
+let autocompleteRenderToken = 0;
+
+function positionAutocompleteDropdown() {
+  const dropdown = document.getElementById('autocomplete-dropdown');
+  const anchor = document.querySelector('.address-bar-wrapper');
+  if (!dropdown || !anchor) return;
+
+  const gap = 8;
+  const rect = anchor.getBoundingClientRect();
+  const top = Math.max(gap, Math.min(rect.bottom + 6, window.innerHeight - gap - 48));
+  const left = Math.max(gap, rect.left);
+  const width = Math.max(180, Math.min(rect.width, window.innerWidth - left - gap));
+  const availableHeight = Math.max(48, window.innerHeight - top - gap);
+  const maxHeight = Math.min(320, availableHeight);
+
+  dropdown.style.top = `${Math.round(top)}px`;
+  dropdown.style.left = `${Math.round(left)}px`;
+  dropdown.style.width = `${Math.round(width)}px`;
+  dropdown.style.maxHeight = `${Math.round(maxHeight)}px`;
+
+  const contentTop = document.getElementById('content-area')?.getBoundingClientRect().top ?? window.innerHeight;
+  const dropdownHeight = Math.min(dropdown.scrollHeight || dropdown.offsetHeight || 0, maxHeight);
+  dropdown.dataset.overlapsContent = top + dropdownHeight > contentTop ? 'true' : 'false';
+}
+
+function closeAutocompleteDropdown({ clearPreview = true } = {}) {
+  const dropdown = document.getElementById('autocomplete-dropdown');
+  autocompleteRequestToken++;
+  autocompleteRenderToken++;
+  if (dropdown) {
+    dropdown.style.display = 'none';
+    dropdown.style.visibility = '';
+    delete dropdown.dataset.overlapsContent;
+  }
+  currentSuggestions = [];
+  selectedSuggestionIndex = -1;
+  if (clearPreview) clearContentPreviewSoon();
+  sendBounds();
+}
 
 function getSmartCommands() {
   const t = translations[state.currentLang] || {};
@@ -931,13 +955,6 @@ function getSmartCommands() {
       url: t['cmd-open-history-desc'] || 'Tarama geçmişi',
       keywords: ['geçmiş', 'gecmis', 'history'],
       run: () => historyBtn?.click()
-    },
-    {
-      id: 'bookmarks',
-      title: t['cmd-open-bookmarks'] || 'Yer imlerini aç',
-      url: t['cmd-open-bookmarks-desc'] || 'Kayıtlı yer imleri',
-      keywords: ['yer imi', 'bookmark', 'bookmarks', 'favori'],
-      run: () => bookmarksBtn?.click()
     },
     {
       id: 'downloads',
@@ -996,14 +1013,14 @@ function showAutocompleteSuggestions(text) {
 
   const cleanText = text.trim().toLowerCase();
   if (!cleanText) {
-    dropdown.style.display = 'none';
-    currentSuggestions = [];
-    selectedSuggestionIndex = -1;
-    sendBounds();
+    closeAutocompleteDropdown();
     return;
   }
 
+  const requestToken = ++autocompleteRequestToken;
   window.oslo.getHistory().then(historyItems => {
+    if (requestToken !== autocompleteRequestToken || addressInput.value.trim().toLowerCase() !== cleanText) return;
+
     const searchEngine = document.getElementById('settings-search-engine')?.value || 'duckduckgo';
     const engineNames = { google: 'Google', duckduckgo: 'DuckDuckGo', bing: 'Bing', yahoo: 'Yahoo', yandex: 'Yandex', brave: 'Brave', ecosia: 'Ecosia', startpage: 'Startpage' };
     const searchEngineName = engineNames[searchEngine] || 'DuckDuckGo';
@@ -1112,11 +1129,11 @@ function renderAutocompleteDropdown() {
   if (!dropdown) return;
 
   if (currentSuggestions.length === 0) {
-    dropdown.style.display = 'none';
-    sendBounds();
+    closeAutocompleteDropdown();
     return;
   }
 
+  const token = ++autocompleteRenderToken;
   dropdown.innerHTML = '';
   currentSuggestions.forEach((s, idx) => {
     const item = document.createElement('div');
@@ -1132,18 +1149,44 @@ function renderAutocompleteDropdown() {
     item.addEventListener('click', (e) => {
       e.stopPropagation();
       activateSuggestion(s);
-      dropdown.style.display = 'none';
-      currentSuggestions = [];
-      selectedSuggestionIndex = -1;
+      closeAutocompleteDropdown();
       addressInput.blur();
-      sendBounds();
     });
 
     dropdown.appendChild(item);
   });
 
+  dropdown.style.visibility = 'hidden';
   dropdown.style.display = 'block';
-  sendBounds();
+  positionAutocompleteDropdown();
+
+  const revealDropdown = () => {
+    if (token !== autocompleteRenderToken) {
+      clearContentPreviewSoon();
+      return;
+    }
+
+    positionAutocompleteDropdown();
+    dropdown.style.visibility = '';
+    sendBounds();
+  };
+
+  if (dropdown.dataset.overlapsContent === 'true') {
+    captureContentPreview().then((captured) => {
+      if (!captured && token === autocompleteRenderToken) {
+        dropdown.dataset.overlapsContent = 'false';
+      }
+      revealDropdown();
+    }).catch(() => {
+      if (token === autocompleteRenderToken) {
+        dropdown.dataset.overlapsContent = 'false';
+      }
+      revealDropdown();
+    });
+  } else {
+    clearContentPreviewSoon();
+    revealDropdown();
+  }
 }
 
 // Helpers: Find In Page
@@ -1991,12 +2034,20 @@ function renderTelemetryLogs() {
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     };
 
+    const normalizeTelemetryEvent = (ev) => {
+      const action = String(ev?.action || ev?.event || 'unknown-event');
+      const data = ev?.data !== undefined ? ev.data : (ev?.details !== undefined ? ev.details : {});
+      const timestamp = Number.isFinite(Number(ev?.timestamp)) ? Number(ev.timestamp) : Date.now();
+      return { action, data, timestamp };
+    };
+
     // Render Events List
     if (eventsList) {
       eventsList.innerHTML = '';
       if (logs.events && logs.events.length > 0) {
         const recentEvents = [...logs.events].reverse();
-        recentEvents.forEach(ev => {
+        recentEvents.forEach(rawEvent => {
+          const ev = normalizeTelemetryEvent(rawEvent);
           const item = document.createElement('div');
           item.className = 'telemetry-item';
 

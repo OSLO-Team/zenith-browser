@@ -67,6 +67,31 @@ function clearContentPreviewSoon() {
   }
 }
 
+function positionBookmarksDropdown(dropdown, anchorRect, { submenu = false } = {}) {
+  if (!dropdown || !anchorRect) return;
+
+  const gap = 8;
+  const offset = 4;
+  const menuWidth = dropdown.offsetWidth || 220;
+  const menuHeight = dropdown.offsetHeight || 180;
+  const maxX = Math.max(gap, window.innerWidth - menuWidth - gap);
+  const maxY = Math.max(gap, window.innerHeight - menuHeight - gap);
+  let x = submenu ? anchorRect.right + offset : anchorRect.left;
+  let y = submenu ? anchorRect.top : anchorRect.bottom + offset;
+
+  if (submenu && x + menuWidth > window.innerWidth - gap) {
+    x = anchorRect.left - menuWidth - offset;
+  }
+  if (!submenu && y + menuHeight > window.innerHeight - gap) {
+    y = anchorRect.top - menuHeight - offset;
+  }
+
+  x = Math.min(Math.max(gap, x), maxX);
+  y = Math.min(Math.max(gap, y), maxY);
+  dropdown.style.left = `${Math.round(x)}px`;
+  dropdown.style.top = `${Math.round(y)}px`;
+}
+
 function getBookmarkFaviconUrl(bookmark) {
   if (bookmark?.favicon) return bookmark.favicon;
 
@@ -749,8 +774,7 @@ function showBookmarksDropdown(folderId, triggerEl, isSubmenu = false) {
         }
         const rect = itemEl.getBoundingClientRect();
         subMenuEl = showBookmarksDropdown(b.id, itemEl, true);
-        subMenuEl.style.left = `${rect.right + 2}px`;
-        subMenuEl.style.top = `${rect.top}px`;
+        positionBookmarksDropdown(subMenuEl, rect, { submenu: true });
         dropdown.activeSubmenu = subMenuEl;
         
         subMenuEl.addEventListener('mouseleave', (e) => {
@@ -821,8 +845,7 @@ function showBookmarksDropdown(folderId, triggerEl, isSubmenu = false) {
   
   if (!isSubmenu) {
     const rect = triggerEl.getBoundingClientRect();
-    dropdown.style.left = `${rect.left}px`;
-    dropdown.style.top = `${rect.bottom + 4}px`;
+    positionBookmarksDropdown(dropdown, rect);
   }
   
   window.dispatchEvent(new Event('resize'));
