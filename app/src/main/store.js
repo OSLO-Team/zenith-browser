@@ -1,6 +1,11 @@
 const path = require('path');
 const fs = require('fs');
 
+function cloneData(data) {
+  if (data === undefined) return undefined;
+  return JSON.parse(JSON.stringify(data));
+}
+
 class Store {
   constructor(fileName, defaults = {}) {
     // If electron is already initialized, get app. If not, require it.
@@ -22,6 +27,15 @@ class Store {
 
   set(key, val) {
     this.data[key] = val;
+    this.write();
+  }
+
+  replace(data) {
+    this.data = cloneData(data) || {};
+    this.write();
+  }
+
+  write() {
     try {
       fs.writeFileSync(this.filePath, JSON.stringify(this.data, null, 2));
     } catch (error) {
@@ -47,15 +61,16 @@ class Store {
   }
 
   parseDataFile(filePath, defaults) {
+    const defaultData = cloneData(defaults) || {};
     try {
       if (fs.existsSync(filePath)) {
         const loaded = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-        return Object.assign({}, defaults, loaded);
+        return Object.assign(defaultData, loaded);
       }
     } catch (error) {
       console.error('Error reading store file, resetting to defaults:', error);
     }
-    return defaults;
+    return defaultData;
   }
 }
 

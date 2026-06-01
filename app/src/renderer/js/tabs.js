@@ -212,23 +212,62 @@ function createTabElement(tab, isPinned) {
     const tabContextMenu = document.getElementById('tab-context-menu');
     if (tabContextMenu) {
       tabContextMenu.style.display = 'block';
+      tabContextMenu.style.visibility = 'hidden';
+      tabContextMenu.style.width = '';
+      tabContextMenu.style.maxWidth = '';
+      tabContextMenu.classList.remove('constrained-to-sidebar');
+      tabContextMenu.dataset.overlapsContent = 'false';
 
-      // Keep menu inside screen bounds
+      // Keep the menu in chrome/sidebar space whenever possible. Native page
+      // views sit above DOM when overlapped, so crossing into content needs a
+      // preview-backed fallback.
       let x = e.clientX;
       let y = e.clientY;
-      const menuWidth = tabContextMenu.offsetWidth || 180;
+      let menuWidth = tabContextMenu.offsetWidth || 180;
       const menuHeight = tabContextMenu.offsetHeight || 150;
+      const gap = 8;
+      const sidebarRect = document.getElementById('sidebar')?.getBoundingClientRect();
+      const contentRect = document.getElementById('content-area')?.getBoundingClientRect();
+      const sidebarLeft = sidebarRect?.left ?? 0;
+      const chromeRight = contentRect?.left ?? window.innerWidth;
+      const availableChromeWidth = Math.floor(chromeRight - sidebarLeft - (gap * 2));
+      let overlapsContent = false;
 
-      if (x + menuWidth > window.innerWidth) {
-        x = window.innerWidth - menuWidth - 10;
+      if (contentRect && availableChromeWidth >= menuWidth) {
+        x = Math.min(Math.max(x, sidebarLeft + gap), chromeRight - menuWidth - gap);
+      } else if (contentRect && availableChromeWidth >= 150) {
+        menuWidth = availableChromeWidth;
+        tabContextMenu.style.width = `${availableChromeWidth}px`;
+        tabContextMenu.style.maxWidth = `${availableChromeWidth}px`;
+        tabContextMenu.classList.add('constrained-to-sidebar');
+        x = sidebarLeft + gap;
+      } else {
+        overlapsContent = !!contentRect;
+        if (x + menuWidth > window.innerWidth) {
+          x = window.innerWidth - menuWidth - gap;
+        }
+        x = Math.max(gap, x);
       }
+
       if (y + menuHeight > window.innerHeight) {
-        y = window.innerHeight - menuHeight - 10;
+        y = window.innerHeight - menuHeight - gap;
       }
+      y = Math.max(gap, y);
 
       tabContextMenu.style.left = `${x}px`;
       tabContextMenu.style.top = `${y}px`;
-      window.dispatchEvent(new Event('resize'));
+      tabContextMenu.dataset.overlapsContent = overlapsContent ? 'true' : 'false';
+
+      const revealMenu = () => {
+        tabContextMenu.style.visibility = '';
+        window.dispatchEvent(new Event('resize'));
+      };
+
+      if (overlapsContent && window.osloContentPreview?.show) {
+        Promise.resolve(window.osloContentPreview.show()).finally(revealMenu);
+      } else {
+        revealMenu();
+      }
     }
   });
 

@@ -3,6 +3,8 @@ import { state } from './state.js';
 import { translations } from './i18n.js';
 import { updateBookmarkIcon } from './tabs.js';
 
+let bookmarksDropdownPreviewToken = 0;
+
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({
     '&': '&amp;',
@@ -15,6 +17,54 @@ function escapeHtml(value) {
 
 function escapeAttribute(value) {
   return escapeHtml(value).replace(/`/g, '&#96;');
+}
+
+function openOverlayWithContentPreview(modal, onReady) {
+  if (!modal) return;
+
+  const preview = window.osloContentPreview;
+  const finish = () => {
+    if (typeof onReady === 'function') onReady();
+  };
+
+  if (preview && typeof preview.openModal === 'function') {
+    preview.openModal(modal).then(finish).catch(() => {
+      modal.classList.add('open');
+      window.dispatchEvent(new Event('resize'));
+      finish();
+    });
+    return;
+  }
+
+  modal.classList.add('open');
+  window.dispatchEvent(new Event('resize'));
+  finish();
+}
+
+function closeOverlayWithContentPreview(modal) {
+  const preview = window.osloContentPreview;
+  if (preview && typeof preview.closeModal === 'function') {
+    preview.closeModal(modal);
+    return;
+  }
+
+  modal?.classList.remove('open');
+  window.dispatchEvent(new Event('resize'));
+}
+
+function showContentPreview() {
+  const preview = window.osloContentPreview;
+  if (preview && typeof preview.show === 'function') {
+    return Promise.resolve(preview.show());
+  }
+  return Promise.resolve(false);
+}
+
+function clearContentPreviewSoon() {
+  const preview = window.osloContentPreview;
+  if (preview && typeof preview.clearSoon === 'function') {
+    preview.clearSoon();
+  }
 }
 
 function getBookmarkFaviconUrl(bookmark) {
@@ -54,11 +104,16 @@ export function initPanels() {
       const tabContextMenu = document.getElementById('tab-context-menu');
       if (tabContextMenu) tabContextMenu.style.display = 'none';
 
-      // Keep menu inside screen bounds
+      // Keep the menu in chrome space so the page view does not need to be hidden.
       let x = e.clientX;
       let y = e.clientY;
+
+      bookmarksBarContextMenu.style.display = 'block';
+      bookmarksBarContextMenu.style.visibility = 'hidden';
+
       const menuWidth = bookmarksBarContextMenu.offsetWidth || 180;
       const menuHeight = bookmarksBarContextMenu.offsetHeight || 50;
+      const contentTop = document.getElementById('content-area')?.getBoundingClientRect().top ?? window.innerHeight;
 
       if (x + menuWidth > window.innerWidth) {
         x = window.innerWidth - menuWidth - 10;
@@ -66,10 +121,16 @@ export function initPanels() {
       if (y + menuHeight > window.innerHeight) {
         y = window.innerHeight - menuHeight - 10;
       }
+      if (y + menuHeight > contentTop && contentTop - menuHeight - 4 >= 8) {
+        y = contentTop - menuHeight - 4;
+      }
+
+      x = Math.max(8, x);
+      y = Math.max(8, y);
 
       bookmarksBarContextMenu.style.left = `${x}px`;
       bookmarksBarContextMenu.style.top = `${y}px`;
-      bookmarksBarContextMenu.style.display = 'block';
+      bookmarksBarContextMenu.style.visibility = '';
       window.dispatchEvent(new Event('resize'));
     });
   }
@@ -109,9 +170,7 @@ export function initPanels() {
   const folderCreateModal = document.getElementById('folder-create-modal');
   const folderCreateNameInput = document.getElementById('folder-create-name');
   const closeFolderCreateModal = () => {
-    if (folderCreateModal) folderCreateModal.classList.remove('open');
-    // Restore content bounds (in case sendBounds hides webview during modal)
-    window.dispatchEvent(new Event('resize'));
+    closeOverlayWithContentPreview(folderCreateModal);
   };
 
   document.getElementById('close-folder-create-modal')?.addEventListener('click', closeFolderCreateModal);
@@ -231,8 +290,7 @@ export function initPanels() {
       }
 
       const modal = document.getElementById('bookmark-edit-modal');
-      if (modal) modal.classList.remove('open');
-      window.dispatchEvent(new Event('resize'));
+      closeOverlayWithContentPreview(modal);
     });
   }
 }
@@ -249,17 +307,15 @@ export function addFolder(parentFolderId = null) {
     folderCreateNameInput.value = defaultName;
   }
   if (folderCreateModal) {
-    folderCreateModal.classList.add('open');
-    // Focus and select the input for quick editing
-    setTimeout(() => {
+    openOverlayWithContentPreview(folderCreateModal, () => {
       if (folderCreateNameInput) {
-        folderCreateNameInput.focus();
-        folderCreateNameInput.select();
+        setTimeout(() => {
+          folderCreateNameInput.focus();
+          folderCreateNameInput.select();
+        }, 100);
       }
-    }, 100);
+    });
   }
-  // Trigger content bounds updates so native view is hidden while modal is open
-  window.dispatchEvent(new Event('resize'));
 }
 
 // Called when user confirms folder creation from the modal
@@ -292,9 +348,7 @@ function confirmFolderCreate() {
     renderBookmarksBar();
   });
   
-  // Close the modal
-  if (folderCreateModal) folderCreateModal.classList.remove('open');
-  window.dispatchEvent(new Event('resize'));
+  closeOverlayWithContentPreview(folderCreateModal);
   state._pendingFolderParentId = null;
 }
 
@@ -617,9 +671,32 @@ function renderTree(parentId, containerEl, depth) {
 }
 
 function showBookmarksDropdown(folderId, triggerEl, isSubmenu = false) {
-  if (!isSubmenu) {
+  const previewReady = triggerEl.dataset.bookmarksPreviewReady === 'true';
+  if (!isSubmenu && !previewReady) {
     const wasActive = triggerEl.classList.contains('dropdown-active');
     closeAllBookmarksDropdowns();
+    if (wasActive) {
+      clearContentPreviewSoon();
+      return null;
+    }
+
+    const token = ++bookmarksDropdownPreviewToken;
+    const openDropdown = () => {
+      if (token !== bookmarksDropdownPreviewToken) return;
+      triggerEl.dataset.bookmarksPreviewReady = 'true';
+      showBookmarksDropdown(folderId, triggerEl, false);
+      delete triggerEl.dataset.bookmarksPreviewReady;
+    };
+
+    showContentPreview().then(openDropdown).catch(openDropdown);
+    return null;
+  }
+
+  if (!isSubmenu) {
+    const wasActive = triggerEl.classList.contains('dropdown-active');
+    if (!previewReady) {
+      closeAllBookmarksDropdowns();
+    }
     if (wasActive) {
       return null;
     }
@@ -753,9 +830,11 @@ function showBookmarksDropdown(folderId, triggerEl, isSubmenu = false) {
 }
 
 export function closeAllBookmarksDropdowns() {
+  bookmarksDropdownPreviewToken++;
   const dropdowns = document.querySelectorAll('.bookmarks-bar-dropdown');
   if (dropdowns.length > 0) {
     dropdowns.forEach(el => el.remove());
+    clearContentPreviewSoon();
   }
   document.querySelectorAll('.bookmarks-bar-item.folder').forEach(el => {
     el.classList.remove('dropdown-active');
@@ -959,10 +1038,12 @@ export function openBookmarkEditModal(bookmark) {
   }
 
   const modal = document.getElementById('bookmark-edit-modal');
-  if (modal) modal.classList.add('open');
-
-  // Trigger content bounds updates so native view is hidden while modal is open
-  window.dispatchEvent(new Event('resize'));
+  openOverlayWithContentPreview(modal, () => {
+    setTimeout(() => {
+      nameInput?.focus();
+      nameInput?.select();
+    }, 100);
+  });
 }
 
 function getLocale() {

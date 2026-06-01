@@ -144,7 +144,9 @@
           </button>
           <button id="nav-split" class="nav-btn" title="Bölünmüş Ekran (Ctrl + \)">
             <svg viewBox="0 0 24 24" width="18" height="18">
-              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zm0 2v12h7V6H4zm9 0v12h7V6h-7z" fill="currentColor" />
+              <path
+                d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zm0 2v12h7V6H4zm9 0v12h7V6h-7z"
+                fill="currentColor" />
             </svg>
           </button>
         </div>
@@ -434,7 +436,7 @@
             </button>
           </div>
           <div class="settings-nav-footer">
-            <span class="settings-nav-version">OSLO v<span id="about-version-display">1.0.0-alpha.9</span></span>
+            <span class="settings-nav-version">OSLO v<span id="about-version-display">1.0.0-alpha.10</span></span>
           </div>
         </nav>
 
@@ -536,9 +538,11 @@
               <div class="settings-card-title" data-i18n="performance-settings">Performans</div>
               <div class="settings-card-row">
                 <div class="settings-card-info">
-                  <span class="settings-card-label" data-i18n="sleep-tabs-desc">Boşta kalan sekmeleri otomatik olarak uyutarak bellek tasarrufu sağlar.</span>
+                  <span class="settings-card-label" data-i18n="sleep-tabs-desc">Boşta kalan sekmeleri otomatik olarak
+                    uyutarak bellek tasarrufu sağlar.</span>
                 </div>
-                <label class="switch"><input type="checkbox" id="settings-sleep-tabs-checkbox"><span class="slider"></span></label>
+                <label class="switch"><input type="checkbox" id="settings-sleep-tabs-checkbox"><span
+                    class="slider"></span></label>
               </div>
               <div class="settings-card-row" id="settings-sleep-tabs-timeout-row">
                 <div class="settings-card-info">
@@ -557,15 +561,20 @@
               <div class="settings-card-title" data-i18n="download-settings">İndirmeler</div>
               <div class="settings-card-row">
                 <div class="settings-card-info">
-                  <span class="settings-card-label" data-i18n="download-prompt-desc">Her indirmede dosyanın nereye kaydedileceğini sor</span>
+                  <span class="settings-card-label" data-i18n="download-prompt-desc">Her indirmede dosyanın nereye
+                    kaydedileceğini sor</span>
                 </div>
-                <label class="switch"><input type="checkbox" id="settings-download-prompt-checkbox"><span class="slider"></span></label>
+                <label class="switch"><input type="checkbox" id="settings-download-prompt-checkbox"><span
+                    class="slider"></span></label>
               </div>
             </div>
 
             <div class="settings-card">
               <div class="settings-card-title" data-i18n="settings-management">Ayarları Yönet</div>
-              <p class="settings-page-desc" style="margin-top: 4px; margin-bottom: 12px; font-size: 12px; color: var(--text-muted);" data-i18n="settings-management-desc">Tüm ayarlarınızı JSON dosyası olarak yedekleyin, başka bir cihazdan geri yükleyin veya fabrika ayarlarına sıfırlayın.</p>
+              <p class="settings-page-desc"
+                style="margin-top: 4px; margin-bottom: 12px; font-size: 12px; color: var(--text-muted);"
+                data-i18n="settings-management-desc">Tüm ayarlarınızı JSON dosyası olarak yedekleyin, başka bir cihazdan
+                geri yükleyin veya ayarlarla birlikte kayıtlı yer imlerini fabrika durumuna sıfırlayın.</p>
               <div class="settings-card-actions">
                 <button id="settings-export-settings" class="settings-action-btn">
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -581,7 +590,8 @@
                 </button>
                 <button id="settings-reset-all" class="settings-action-btn danger">
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                    <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
+                    <path
+                      d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
                   </svg>
                   <span data-i18n="reset-all-settings">Fabrika Ayarlarına Sıfırla</span>
                 </button>
@@ -620,11 +630,15 @@
             <div class="settings-card">
               <div class="settings-card-title" data-i18n="password-security">Şifre Güvenliği</div>
               <div class="settings-card-row">
-                <div class="settings-card-info"><span class="settings-card-label" data-i18n="password-security-desc">Zayıf veya tekrar kullanılan kayıtlı şifreleri kontrol edin.</span></div>
-                <label class="switch"><input type="checkbox" id="settings-password-security-warnings" checked><span class="slider"></span></label>
+                <div class="settings-card-info"><span class="settings-card-label"
+                    data-i18n="password-security-desc">Zayıf veya tekrar kullanılan kayıtlı şifreleri kontrol
+                    edin.</span></div>
+                <label class="switch"><input type="checkbox" id="settings-password-security-warnings" checked><span
+                    class="slider"></span></label>
               </div>
               <div class="settings-card-actions">
-                <button id="settings-audit-passwords" class="settings-action-btn secondary" data-i18n="password-audit-btn">Şifreleri Tara</button>
+                <button id="settings-audit-passwords" class="settings-action-btn secondary"
+                  data-i18n="password-audit-btn">Şifreleri Tara</button>
               </div>
             </div>
 
@@ -632,7 +646,8 @@
               <div class="settings-card-title" data-i18n="tracking-protection">Takip Koruması</div>
               <div class="settings-card-row">
                 <div class="settings-card-info">
-                  <span class="settings-card-label" data-i18n="tracking-protection-desc">Takip alan adlarına karşı uygulanacak koruma seviyesini seçin.</span>
+                  <span class="settings-card-label" data-i18n="tracking-protection-desc">Takip alan adlarına karşı
+                    uygulanacak koruma seviyesini seçin.</span>
                 </div>
                 <select id="settings-tracking-protection-level" class="settings-select">
                   <option value="off" data-i18n="tracking-off">Kapalı</option>
@@ -641,15 +656,20 @@
                 </select>
               </div>
               <div class="settings-card-row">
-                <div class="settings-card-info"><span class="settings-card-label" data-i18n="fingerprint-protection">Parmak izi koruması</span></div>
-                <label class="switch"><input type="checkbox" id="settings-fingerprint-protection" checked><span class="slider"></span></label>
+                <div class="settings-card-info"><span class="settings-card-label"
+                    data-i18n="fingerprint-protection">Parmak izi koruması</span></div>
+                <label class="switch"><input type="checkbox" id="settings-fingerprint-protection" checked><span
+                    class="slider"></span></label>
               </div>
               <div class="settings-card-row">
-                <div class="settings-card-info"><span class="settings-card-label" data-i18n="global-privacy-control">Global Privacy Control sinyali gönder</span></div>
-                <label class="switch"><input type="checkbox" id="settings-global-privacy-control" checked><span class="slider"></span></label>
+                <div class="settings-card-info"><span class="settings-card-label"
+                    data-i18n="global-privacy-control">Global Privacy Control sinyali gönder</span></div>
+                <label class="switch"><input type="checkbox" id="settings-global-privacy-control" checked><span
+                    class="slider"></span></label>
               </div>
               <div class="settings-card-row">
-                <div class="settings-card-info"><span class="settings-card-label" data-i18n="referer-policy">Referer koruması</span></div>
+                <div class="settings-card-info"><span class="settings-card-label" data-i18n="referer-policy">Referer
+                    koruması</span></div>
                 <select id="settings-referer-policy" class="settings-select">
                   <option value="full" data-i18n="referer-full">Normal</option>
                   <option value="cross-origin" data-i18n="referer-cross-origin">Siteler arası azalt</option>
@@ -658,10 +678,13 @@
                 </select>
               </div>
               <div class="settings-card-row">
-                <div class="settings-card-info"><span class="settings-card-label" data-i18n="webrtc-protection">WebRTC IP sızıntısı koruması</span></div>
-                <label class="switch"><input type="checkbox" id="settings-webrtc-protection" checked><span class="slider"></span></label>
+                <div class="settings-card-info"><span class="settings-card-label" data-i18n="webrtc-protection">WebRTC
+                    IP sızıntısı koruması</span></div>
+                <label class="switch"><input type="checkbox" id="settings-webrtc-protection" checked><span
+                    class="slider"></span></label>
               </div>
-              <div class="settings-card-notice" data-i18n="restart-required-network">Bazı ağ korumaları tarayıcı yeniden başlatıldıktan sonra tam uygulanır.</div>
+              <div class="settings-card-notice" data-i18n="restart-required-network">Bazı ağ korumaları tarayıcı yeniden
+                başlatıldıktan sonra tam uygulanır.</div>
             </div>
 
             <div class="settings-card">
@@ -675,8 +698,11 @@
                     class="slider"></span></label>
               </div>
               <div class="settings-card-sub" id="settings-https-exceptions-container" style="display: none;">
-                <label for="settings-https-exceptions" class="settings-card-label" data-i18n="https-exceptions-desc">HTTPS zorlamasından hariç tutulacak alan adlarını satır satır yazın.</label>
-                <textarea id="settings-https-exceptions" class="settings-textarea" rows="4" placeholder="example.com"></textarea>
+                <label for="settings-https-exceptions" class="settings-card-label"
+                  data-i18n="https-exceptions-desc">HTTPS zorlamasından hariç tutulacak alan adlarını satır satır
+                  yazın.</label>
+                <textarea id="settings-https-exceptions" class="settings-textarea" rows="4"
+                  placeholder="example.com"></textarea>
               </div>
             </div>
 
@@ -700,8 +726,8 @@
                   <option value="custom" data-i18n="dns-provider-custom">Özel</option>
                 </select>
                 <input type="text" id="settings-dns-custom-provider" class="settings-input"
-                  data-i18n-placeholder="dns-custom-placeholder"
-                  placeholder="https://dns.example.com/dns-query" style="display: none;">
+                  data-i18n-placeholder="dns-custom-placeholder" placeholder="https://dns.example.com/dns-query"
+                  style="display: none;">
               </div>
               <div id="dns-restart-notice" class="settings-card-notice" style="display: none;"
                 data-i18n="dns-restart-notice">
@@ -713,11 +739,13 @@
               <div class="settings-card-title" data-i18n="cookie-management">Çerez Yönetimi</div>
               <div class="settings-card-row">
                 <div class="settings-card-info">
-                  <span class="settings-card-label" data-i18n="cookie-policy-desc">Sitelerin çerezleri nasıl kullanabileceğini belirleyin.</span>
+                  <span class="settings-card-label" data-i18n="cookie-policy-desc">Sitelerin çerezleri nasıl
+                    kullanabileceğini belirleyin.</span>
                 </div>
                 <select id="settings-cookie-policy" class="settings-select">
                   <option value="allow" data-i18n="cookie-policy-allow">Tüm çerezlere izin ver</option>
-                  <option value="block-third-party" data-i18n="cookie-policy-third-party">Üçüncü taraf çerezleri engelle</option>
+                  <option value="block-third-party" data-i18n="cookie-policy-third-party">Üçüncü taraf çerezleri engelle
+                  </option>
                   <option value="block-all" data-i18n="cookie-policy-block-all">Tüm çerezleri engelle</option>
                 </select>
               </div>
@@ -725,24 +753,61 @@
                 <div class="settings-card-info">
                   <span class="settings-card-label" data-i18n="clear-cookies-on-exit">Çıkışta çerezleri temizle</span>
                 </div>
-                <label class="switch"><input type="checkbox" id="settings-clear-cookies-on-exit"><span class="slider"></span></label>
+                <label class="switch"><input type="checkbox" id="settings-clear-cookies-on-exit"><span
+                    class="slider"></span></label>
               </div>
             </div>
 
             <div class="settings-card">
               <div class="settings-card-title" data-i18n="permissions-center">İzinler Merkezi</div>
-              <div class="settings-card-row"><span class="settings-card-label" data-i18n="permission-notifications">Bildirimler</span><select id="settings-permission-notifications" class="settings-select"><option value="ask" data-i18n="permission-ask">Sor</option><option value="allow" data-i18n="permission-allow-default">İzin ver</option><option value="block" data-i18n="permission-block-default">Engelle</option></select></div>
-              <div class="settings-card-row"><span class="settings-card-label" data-i18n="permission-camera">Kamera</span><select id="settings-permission-camera" class="settings-select"><option value="ask" data-i18n="permission-ask">Sor</option><option value="allow" data-i18n="permission-allow-default">İzin ver</option><option value="block" data-i18n="permission-block-default">Engelle</option></select></div>
-              <div class="settings-card-row"><span class="settings-card-label" data-i18n="permission-microphone">Mikrofon</span><select id="settings-permission-microphone" class="settings-select"><option value="ask" data-i18n="permission-ask">Sor</option><option value="allow" data-i18n="permission-allow-default">İzin ver</option><option value="block" data-i18n="permission-block-default">Engelle</option></select></div>
-              <div class="settings-card-row"><span class="settings-card-label" data-i18n="permission-location">Konum</span><select id="settings-permission-location" class="settings-select"><option value="ask" data-i18n="permission-ask">Sor</option><option value="allow" data-i18n="permission-allow-default">İzin ver</option><option value="block" data-i18n="permission-block-default">Engelle</option></select></div>
-              <div class="settings-card-row"><span class="settings-card-label" data-i18n="permission-clipboard">Pano</span><select id="settings-permission-clipboard" class="settings-select"><option value="ask" data-i18n="permission-ask">Sor</option><option value="allow" data-i18n="permission-allow-default">İzin ver</option><option value="block" data-i18n="permission-block-default">Engelle</option></select></div>
-              <div class="settings-card-row"><span class="settings-card-label" data-i18n="permission-autoplay">Otomatik oynatma</span><select id="settings-permission-autoplay" class="settings-select"><option value="allow" data-i18n="permission-allow-default">İzin ver</option><option value="block" data-i18n="permission-block-default">Engelle</option></select></div>
+              <div class="settings-card-row"><span class="settings-card-label"
+                  data-i18n="permission-notifications">Bildirimler</span><select id="settings-permission-notifications"
+                  class="settings-select">
+                  <option value="ask" data-i18n="permission-ask">Sor</option>
+                  <option value="allow" data-i18n="permission-allow-default">İzin ver</option>
+                  <option value="block" data-i18n="permission-block-default">Engelle</option>
+                </select></div>
+              <div class="settings-card-row"><span class="settings-card-label"
+                  data-i18n="permission-camera">Kamera</span><select id="settings-permission-camera"
+                  class="settings-select">
+                  <option value="ask" data-i18n="permission-ask">Sor</option>
+                  <option value="allow" data-i18n="permission-allow-default">İzin ver</option>
+                  <option value="block" data-i18n="permission-block-default">Engelle</option>
+                </select></div>
+              <div class="settings-card-row"><span class="settings-card-label"
+                  data-i18n="permission-microphone">Mikrofon</span><select id="settings-permission-microphone"
+                  class="settings-select">
+                  <option value="ask" data-i18n="permission-ask">Sor</option>
+                  <option value="allow" data-i18n="permission-allow-default">İzin ver</option>
+                  <option value="block" data-i18n="permission-block-default">Engelle</option>
+                </select></div>
+              <div class="settings-card-row"><span class="settings-card-label"
+                  data-i18n="permission-location">Konum</span><select id="settings-permission-location"
+                  class="settings-select">
+                  <option value="ask" data-i18n="permission-ask">Sor</option>
+                  <option value="allow" data-i18n="permission-allow-default">İzin ver</option>
+                  <option value="block" data-i18n="permission-block-default">Engelle</option>
+                </select></div>
+              <div class="settings-card-row"><span class="settings-card-label"
+                  data-i18n="permission-clipboard">Pano</span><select id="settings-permission-clipboard"
+                  class="settings-select">
+                  <option value="ask" data-i18n="permission-ask">Sor</option>
+                  <option value="allow" data-i18n="permission-allow-default">İzin ver</option>
+                  <option value="block" data-i18n="permission-block-default">Engelle</option>
+                </select></div>
+              <div class="settings-card-row"><span class="settings-card-label" data-i18n="permission-autoplay">Otomatik
+                  oynatma</span><select id="settings-permission-autoplay" class="settings-select">
+                  <option value="allow" data-i18n="permission-allow-default">İzin ver</option>
+                  <option value="block" data-i18n="permission-block-default">Engelle</option>
+                </select></div>
             </div>
 
             <div class="settings-card">
               <div class="settings-card-title" data-i18n="download-security">Güvenli İndirme</div>
               <div class="settings-card-row">
-                <div class="settings-card-info"><span class="settings-card-label" data-i18n="dangerous-downloads-desc">Riskli dosya türleri için uyarı gösterin veya engelleyin.</span></div>
+                <div class="settings-card-info"><span class="settings-card-label"
+                    data-i18n="dangerous-downloads-desc">Riskli dosya türleri için uyarı gösterin veya
+                    engelleyin.</span></div>
                 <select id="settings-dangerous-downloads" class="settings-select">
                   <option value="off" data-i18n="download-protection-off">Kapalı</option>
                   <option value="warn" data-i18n="download-protection-warn">Uyar</option>
@@ -754,12 +819,17 @@
             <div class="settings-card">
               <div class="settings-card-title" data-i18n="incognito-defaults">Gizli Mod Varsayılanları</div>
               <div class="settings-card-row">
-                <div class="settings-card-info"><span class="settings-card-label" data-i18n="incognito-forget-downloads">Gizli mod indirme geçmişini saklama</span></div>
-                <label class="switch"><input type="checkbox" id="settings-incognito-forget-downloads" checked><span class="slider"></span></label>
+                <div class="settings-card-info"><span class="settings-card-label"
+                    data-i18n="incognito-forget-downloads">Gizli mod indirme geçmişini saklama</span></div>
+                <label class="switch"><input type="checkbox" id="settings-incognito-forget-downloads" checked><span
+                    class="slider"></span></label>
               </div>
               <div class="settings-card-row">
-                <div class="settings-card-info"><span class="settings-card-label" data-i18n="incognito-block-third-party-cookies">Gizli modda üçüncü taraf çerezleri engelle</span></div>
-                <label class="switch"><input type="checkbox" id="settings-incognito-block-third-party-cookies" checked><span class="slider"></span></label>
+                <div class="settings-card-info"><span class="settings-card-label"
+                    data-i18n="incognito-block-third-party-cookies">Gizli modda üçüncü taraf çerezleri engelle</span>
+                </div>
+                <label class="switch"><input type="checkbox" id="settings-incognito-block-third-party-cookies"
+                    checked><span class="slider"></span></label>
               </div>
             </div>
 
@@ -767,9 +837,11 @@
               <div class="settings-card-title" data-i18n="telemetry-logs-title">Telemetri ve Hata Raporları</div>
               <div class="settings-card-row">
                 <div class="settings-card-info">
-                  <span class="settings-card-label" data-i18n="telemetry-desc">Tanılama verilerini yalnızca yerel olarak kaydeder ve isteğe bağlı raporlar.</span>
+                  <span class="settings-card-label" data-i18n="telemetry-desc">Tanılama verilerini yalnızca yerel olarak
+                    kaydeder ve isteğe bağlı raporlar.</span>
                 </div>
-                <label class="switch"><input type="checkbox" id="settings-telemetry-checkbox"><span class="slider"></span></label>
+                <label class="switch"><input type="checkbox" id="settings-telemetry-checkbox"><span
+                    class="slider"></span></label>
               </div>
             </div>
 
@@ -787,20 +859,28 @@
                 </select>
               </div>
               <div class="settings-card-row">
-                <div class="settings-card-info"><span class="settings-card-label" data-i18n="clear-history-on-exit">Çıkışta geçmişi temizle</span></div>
-                <label class="switch"><input type="checkbox" id="settings-clear-history-on-exit"><span class="slider"></span></label>
+                <div class="settings-card-info"><span class="settings-card-label"
+                    data-i18n="clear-history-on-exit">Çıkışta geçmişi temizle</span></div>
+                <label class="switch"><input type="checkbox" id="settings-clear-history-on-exit"><span
+                    class="slider"></span></label>
               </div>
               <div class="settings-card-row">
-                <div class="settings-card-info"><span class="settings-card-label" data-i18n="clear-cache-on-exit">Çıkışta önbelleği temizle</span></div>
-                <label class="switch"><input type="checkbox" id="settings-clear-cache-on-exit"><span class="slider"></span></label>
+                <div class="settings-card-info"><span class="settings-card-label"
+                    data-i18n="clear-cache-on-exit">Çıkışta önbelleği temizle</span></div>
+                <label class="switch"><input type="checkbox" id="settings-clear-cache-on-exit"><span
+                    class="slider"></span></label>
               </div>
               <div class="settings-card-row">
-                <div class="settings-card-info"><span class="settings-card-label" data-i18n="clear-local-storage-on-exit">Çıkışta site depolamasını temizle</span></div>
-                <label class="switch"><input type="checkbox" id="settings-clear-local-storage-on-exit"><span class="slider"></span></label>
+                <div class="settings-card-info"><span class="settings-card-label"
+                    data-i18n="clear-local-storage-on-exit">Çıkışta site depolamasını temizle</span></div>
+                <label class="switch"><input type="checkbox" id="settings-clear-local-storage-on-exit"><span
+                    class="slider"></span></label>
               </div>
               <div class="settings-card-row">
-                <div class="settings-card-info"><span class="settings-card-label" data-i18n="clear-downloads-on-exit">Çıkışta indirme geçmişini temizle</span></div>
-                <label class="switch"><input type="checkbox" id="settings-clear-downloads-on-exit"><span class="slider"></span></label>
+                <div class="settings-card-info"><span class="settings-card-label"
+                    data-i18n="clear-downloads-on-exit">Çıkışta indirme geçmişini temizle</span></div>
+                <label class="switch"><input type="checkbox" id="settings-clear-downloads-on-exit"><span
+                    class="slider"></span></label>
               </div>
               <div class="settings-card-actions">
                 <button id="settings-manage-permissions" class="settings-action-btn secondary"
@@ -837,7 +917,8 @@
               <div class="settings-card-title" data-i18n="theme-mode">Tema Modu</div>
               <div class="settings-card-row">
                 <div class="settings-card-info">
-                  <span class="settings-card-label" data-i18n="theme-mode-desc">Arayüz temasını seçin veya sistem temasını takip edin.</span>
+                  <span class="settings-card-label" data-i18n="theme-mode-desc">Arayüz temasını seçin veya sistem
+                    temasını takip edin.</span>
                 </div>
                 <select id="settings-theme-mode" class="settings-select">
                   <option value="dark" data-i18n="theme-dark">Koyu</option>
@@ -852,11 +933,16 @@
                 <div class="settings-color-control">
                   <input type="color" id="settings-accent-color" class="settings-color-input" value="#00ddff">
                   <div class="settings-color-swatches" aria-label="Accent presets">
-                    <button class="settings-color-swatch" data-accent="#00ddff" style="--swatch-color: #00ddff;" title="Cyan"></button>
-                    <button class="settings-color-swatch" data-accent="#22c55e" style="--swatch-color: #22c55e;" title="Green"></button>
-                    <button class="settings-color-swatch" data-accent="#f59e0b" style="--swatch-color: #f59e0b;" title="Amber"></button>
-                    <button class="settings-color-swatch" data-accent="#ec4899" style="--swatch-color: #ec4899;" title="Pink"></button>
-                    <button class="settings-color-swatch" data-accent="#8b5cf6" style="--swatch-color: #8b5cf6;" title="Violet"></button>
+                    <button class="settings-color-swatch" data-accent="#00ddff" style="--swatch-color: #00ddff;"
+                      title="Cyan"></button>
+                    <button class="settings-color-swatch" data-accent="#22c55e" style="--swatch-color: #22c55e;"
+                      title="Green"></button>
+                    <button class="settings-color-swatch" data-accent="#f59e0b" style="--swatch-color: #f59e0b;"
+                      title="Amber"></button>
+                    <button class="settings-color-swatch" data-accent="#ec4899" style="--swatch-color: #ec4899;"
+                      title="Pink"></button>
+                    <button class="settings-color-swatch" data-accent="#8b5cf6" style="--swatch-color: #8b5cf6;"
+                      title="Violet"></button>
                   </div>
                 </div>
               </div>
@@ -868,7 +954,8 @@
                 <div class="settings-card-info">
                   <span class="settings-card-label" data-i18n="compact-mode">Kompakt Mod</span>
                 </div>
-                <label class="switch"><input type="checkbox" id="settings-compact-mode"><span class="slider"></span></label>
+                <label class="switch"><input type="checkbox" id="settings-compact-mode"><span
+                    class="slider"></span></label>
               </div>
               <div class="settings-card-row">
                 <div class="settings-card-info">
@@ -917,10 +1004,12 @@
               </div>
               <div class="settings-card-sub">
                 <div class="settings-slider-row">
-                  <label for="settings-tab-height" class="settings-card-label" data-i18n="tab-height">Sekme Yüksekliği</label>
+                  <label for="settings-tab-height" class="settings-card-label" data-i18n="tab-height">Sekme
+                    Yüksekliği</label>
                   <span id="settings-tab-height-value" class="settings-value-chip">36px</span>
                 </div>
-                <input type="range" id="settings-tab-height" class="settings-range" min="32" max="52" step="2" value="36">
+                <input type="range" id="settings-tab-height" class="settings-range" min="32" max="52" step="2"
+                  value="36">
               </div>
             </div>
 
@@ -930,14 +1019,17 @@
                 <div class="settings-card-info">
                   <span class="settings-card-label" data-i18n="sidebar-auto-hide">Otomatik Gizle</span>
                 </div>
-                <label class="switch"><input type="checkbox" id="settings-sidebar-auto-hide"><span class="slider"></span></label>
+                <label class="switch"><input type="checkbox" id="settings-sidebar-auto-hide"><span
+                    class="slider"></span></label>
               </div>
               <div class="settings-card-sub">
                 <div class="settings-slider-row">
-                  <label for="settings-sidebar-width" class="settings-card-label" data-i18n="sidebar-width">Genişlik</label>
+                  <label for="settings-sidebar-width" class="settings-card-label"
+                    data-i18n="sidebar-width">Genişlik</label>
                   <span id="settings-sidebar-width-value" class="settings-value-chip">240px</span>
                 </div>
-                <input type="range" id="settings-sidebar-width" class="settings-range" min="220" max="320" step="10" value="240">
+                <input type="range" id="settings-sidebar-width" class="settings-range" min="220" max="320" step="10"
+                  value="240">
               </div>
             </div>
 
@@ -947,7 +1039,8 @@
                 <div class="settings-card-info">
                   <span class="settings-card-label" data-i18n="topbar-auto-hide">Otomatik Gizle</span>
                 </div>
-                <label class="switch"><input type="checkbox" id="settings-topbar-auto-hide"><span class="slider"></span></label>
+                <label class="switch"><input type="checkbox" id="settings-topbar-auto-hide"><span
+                    class="slider"></span></label>
               </div>
             </div>
 
@@ -966,23 +1059,27 @@
                 </select>
               </div>
               <div class="settings-card-sub" data-background-panel="url">
-                <label for="settings-wallpaper-url" class="settings-card-label" data-i18n="wallpaper-desc">Yeni sekme sayfasında gösterilecek arka plan resmi URL'si.</label>
+                <label for="settings-wallpaper-url" class="settings-card-label" data-i18n="wallpaper-desc">Yeni sekme
+                  sayfasında gösterilecek arka plan resmi URL'si.</label>
                 <input type="text" id="settings-wallpaper-url" class="settings-input"
                   data-i18n-placeholder="wallpaper-url-placeholder"
                   placeholder="https://resim-adresi.com/resim.jpg veya boş bırakın">
               </div>
               <div class="settings-card-sub" data-background-panel="file">
-                <span class="settings-card-label" id="settings-wallpaper-file-label" data-i18n="wallpaper-file-empty">Dosya seçilmedi.</span>
+                <span class="settings-card-label" id="settings-wallpaper-file-label"
+                  data-i18n="wallpaper-file-empty">Dosya seçilmedi.</span>
                 <button id="settings-wallpaper-file-btn" class="settings-action-btn secondary" type="button">
                   <span data-i18n="choose-wallpaper-file">Resim Seç</span>
                 </button>
               </div>
               <div class="settings-card-sub" data-background-panel="color">
-                <label for="settings-newtab-background-color" class="settings-card-label" data-i18n="background-color">Düz Renk</label>
+                <label for="settings-newtab-background-color" class="settings-card-label"
+                  data-i18n="background-color">Düz Renk</label>
                 <input type="color" id="settings-newtab-background-color" class="settings-color-input" value="#0b0c0e">
               </div>
               <div class="settings-card-sub" data-background-panel="preset">
-                <label for="settings-newtab-preset-wallpaper" class="settings-card-label" data-i18n="background-preset">Hazır</label>
+                <label for="settings-newtab-preset-wallpaper" class="settings-card-label"
+                  data-i18n="background-preset">Hazır</label>
                 <select id="settings-newtab-preset-wallpaper" class="settings-select">
                   <option value="aurora" data-i18n="preset-aurora">Aurora</option>
                   <option value="dawn" data-i18n="preset-dawn">Şafak</option>
@@ -995,24 +1092,34 @@
             <div class="settings-card">
               <div class="settings-card-title" data-i18n="newtab-layout">Yeni Sekme Düzeni</div>
               <div class="settings-card-row">
-                <div class="settings-card-info"><span class="settings-card-label" data-i18n="newtab-show-clock">Saat</span></div>
-                <label class="switch"><input type="checkbox" id="settings-newtab-show-clock" checked><span class="slider"></span></label>
+                <div class="settings-card-info"><span class="settings-card-label"
+                    data-i18n="newtab-show-clock">Saat</span></div>
+                <label class="switch"><input type="checkbox" id="settings-newtab-show-clock" checked><span
+                    class="slider"></span></label>
               </div>
               <div class="settings-card-row">
-                <div class="settings-card-info"><span class="settings-card-label" data-i18n="newtab-show-date">Tarih</span></div>
-                <label class="switch"><input type="checkbox" id="settings-newtab-show-date" checked><span class="slider"></span></label>
+                <div class="settings-card-info"><span class="settings-card-label"
+                    data-i18n="newtab-show-date">Tarih</span></div>
+                <label class="switch"><input type="checkbox" id="settings-newtab-show-date" checked><span
+                    class="slider"></span></label>
               </div>
               <div class="settings-card-row">
-                <div class="settings-card-info"><span class="settings-card-label" data-i18n="newtab-show-weather">Hava Durumu</span></div>
-                <label class="switch"><input type="checkbox" id="settings-newtab-show-weather" checked><span class="slider"></span></label>
+                <div class="settings-card-info"><span class="settings-card-label" data-i18n="newtab-show-weather">Hava
+                    Durumu</span></div>
+                <label class="switch"><input type="checkbox" id="settings-newtab-show-weather" checked><span
+                    class="slider"></span></label>
               </div>
               <div class="settings-card-row">
-                <div class="settings-card-info"><span class="settings-card-label" data-i18n="newtab-show-search">Arama Kutusu</span></div>
-                <label class="switch"><input type="checkbox" id="settings-newtab-show-search" checked><span class="slider"></span></label>
+                <div class="settings-card-info"><span class="settings-card-label" data-i18n="newtab-show-search">Arama
+                    Kutusu</span></div>
+                <label class="switch"><input type="checkbox" id="settings-newtab-show-search" checked><span
+                    class="slider"></span></label>
               </div>
               <div class="settings-card-row">
-                <div class="settings-card-info"><span class="settings-card-label" data-i18n="newtab-show-shortcuts">Hızlı Erişimler</span></div>
-                <label class="switch"><input type="checkbox" id="settings-newtab-show-shortcuts" checked><span class="slider"></span></label>
+                <div class="settings-card-info"><span class="settings-card-label"
+                    data-i18n="newtab-show-shortcuts">Hızlı Erişimler</span></div>
+                <label class="switch"><input type="checkbox" id="settings-newtab-show-shortcuts" checked><span
+                    class="slider"></span></label>
               </div>
             </div>
 
@@ -1022,13 +1129,15 @@
                 <div class="settings-card-info">
                   <span class="settings-card-label" data-i18n="reduce-motion">Animasyonları Azalt</span>
                 </div>
-                <label class="switch"><input type="checkbox" id="settings-reduce-motion"><span class="slider"></span></label>
+                <label class="switch"><input type="checkbox" id="settings-reduce-motion"><span
+                    class="slider"></span></label>
               </div>
               <div class="settings-card-row">
                 <div class="settings-card-info">
                   <span class="settings-card-label" data-i18n="transparency-enabled">Şeffaflık ve Blur Efekti</span>
                 </div>
-                <label class="switch"><input type="checkbox" id="settings-transparency-enabled" checked><span class="slider"></span></label>
+                <label class="switch"><input type="checkbox" id="settings-transparency-enabled" checked><span
+                    class="slider"></span></label>
               </div>
             </div>
 
@@ -1038,18 +1147,24 @@
                 <div class="settings-card-info">
                   <span class="settings-card-label" data-i18n="custom-css-enabled">Özel CSS Etkin</span>
                 </div>
-                <label class="switch"><input type="checkbox" id="settings-custom-css-enabled" checked><span class="slider"></span></label>
+                <label class="switch"><input type="checkbox" id="settings-custom-css-enabled" checked><span
+                    class="slider"></span></label>
               </div>
               <div class="settings-card-sub">
-                <label for="settings-custom-css" class="settings-card-label" data-i18n="css-desc">Tarayıcı arayüzüne kendi CSS kurallarınızı ekleyin.</label>
+                <label for="settings-custom-css" class="settings-card-label" data-i18n="css-desc">Tarayıcı arayüzüne
+                  kendi CSS kurallarınızı ekleyin.</label>
                 <textarea id="settings-custom-css" class="settings-textarea"
                   placeholder="body { filter: contrast(1.05); } ..." rows="8"></textarea>
                 <div class="settings-card-actions">
-                  <button id="settings-custom-css-preview" class="settings-action-btn secondary" type="button" data-i18n="custom-css-preview">Önizle</button>
-                  <button id="settings-custom-css-save" class="settings-action-btn accent" type="button" data-i18n="custom-css-save">Kaydet</button>
-                  <button id="settings-custom-css-reset" class="settings-action-btn danger" type="button" data-i18n="custom-css-reset">Sıfırla</button>
+                  <button id="settings-custom-css-preview" class="settings-action-btn secondary" type="button"
+                    data-i18n="custom-css-preview">Önizle</button>
+                  <button id="settings-custom-css-save" class="settings-action-btn accent" type="button"
+                    data-i18n="custom-css-save">Kaydet</button>
+                  <button id="settings-custom-css-reset" class="settings-action-btn danger" type="button"
+                    data-i18n="custom-css-reset">Sıfırla</button>
                 </div>
-                <div id="settings-custom-css-status" class="settings-update-msg" style="display: none; margin-top: 8px;"></div>
+                <div id="settings-custom-css-status" class="settings-update-msg"
+                  style="display: none; margin-top: 8px;"></div>
               </div>
             </div>
           </div>
@@ -1058,7 +1173,8 @@
           <div class="settings-tab-content" id="settings-tab-about">
             <div class="settings-page-header">
               <h3 data-i18n="about-oslo">OSLO Hakkında</h3>
-              <p class="settings-page-desc" data-i18n="about-desc">Sürüm bilgileri, güncellemeler ve tanılama araçları.</p>
+              <p class="settings-page-desc" data-i18n="about-desc">Sürüm bilgileri, güncellemeler ve tanılama araçları.
+              </p>
             </div>
 
             <div class="settings-card settings-about-card">
@@ -1066,52 +1182,75 @@
                 <img src="../../assets/logo.svg" width="48" height="48" alt="OSLO" class="settings-logo-spin">
                 <div class="settings-about-info">
                   <span class="settings-about-name">OSLO Browser</span>
-                  <span class="settings-about-ver">v<span id="about-version-display-main">1.0.0-alpha.9</span></span>
+                  <span class="settings-about-ver">v<span id="about-version-display-main">1.0.0-alpha.10</span></span>
                 </div>
               </div>
               <div id="update-status-message" class="settings-update-msg" style="display: none;"></div>
               <button id="btn-check-updates" class="settings-action-btn accent" data-i18n="check-updates">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="vertical-align: middle; margin-right: 4px;"><path d="M21 10.12h-6.78l2.74-2.82c-2.73-2.7-7.15-2.8-9.88-.1-2.73 2.71-2.73 7.08 0 9.79s7.15 2.71 9.88 0C18.32 15.65 19 14.08 19 12.1h2c0 1.98-.88 4.55-2.64 6.29-3.51 3.48-9.21 3.48-12.72 0-3.5-3.47-3.5-9.11 0-12.58 3.51-3.47 9.14-3.49 12.65-.04L21 3v7.12z"/></svg>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"
+                  style="vertical-align: middle; margin-right: 4px;">
+                  <path
+                    d="M21 10.12h-6.78l2.74-2.82c-2.73-2.7-7.15-2.8-9.88-.1-2.73 2.71-2.73 7.08 0 9.79s7.15 2.71 9.88 0C18.32 15.65 19 14.08 19 12.1h2c0 1.98-.88 4.55-2.64 6.29-3.51 3.48-9.21 3.48-12.72 0-3.5-3.47-3.5-9.11 0-12.58 3.51-3.47 9.14-3.49 12.65-.04L21 3v7.12z" />
+                </svg>
                 Güncellemeleri Denetle
               </button>
             </div>
 
             <div class="settings-card">
               <div class="settings-card-title" data-i18n="browser-info-title">Tarayıcı Bilgileri</div>
-              <div class="system-info-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; font-size: 13px; color: var(--text-main);">
-                <div class="sys-info-item" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background-color: var(--bg-tertiary); border-radius: 6px; border: 1px solid var(--border-color);">
+              <div class="system-info-grid"
+                style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; font-size: 13px; color: var(--text-main);">
+                <div class="sys-info-item"
+                  style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background-color: var(--bg-tertiary); border-radius: 6px; border: 1px solid var(--border-color);">
                   <span style="color: var(--text-muted);" data-i18n="sys-electron">Electron:</span>
                   <span id="sys-val-electron" style="font-weight: 500;">-</span>
                 </div>
-                <div class="sys-info-item" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background-color: var(--bg-tertiary); border-radius: 6px; border: 1px solid var(--border-color);">
+                <div class="sys-info-item"
+                  style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background-color: var(--bg-tertiary); border-radius: 6px; border: 1px solid var(--border-color);">
                   <span style="color: var(--text-muted);" data-i18n="sys-chrome">Chromium:</span>
                   <span id="sys-val-chrome" style="font-weight: 500;">-</span>
                 </div>
-                <div class="sys-info-item" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background-color: var(--bg-tertiary); border-radius: 6px; border: 1px solid var(--border-color);">
+                <div class="sys-info-item"
+                  style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background-color: var(--bg-tertiary); border-radius: 6px; border: 1px solid var(--border-color);">
                   <span style="color: var(--text-muted);" data-i18n="sys-node">Node.js:</span>
                   <span id="sys-val-node" style="font-weight: 500;">-</span>
                 </div>
-                <div class="sys-info-item" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background-color: var(--bg-tertiary); border-radius: 6px; border: 1px solid var(--border-color);">
+                <div class="sys-info-item"
+                  style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background-color: var(--bg-tertiary); border-radius: 6px; border: 1px solid var(--border-color);">
                   <span style="color: var(--text-muted);" data-i18n="sys-v8">V8 Engine:</span>
                   <span id="sys-val-v8" style="font-weight: 500;">-</span>
                 </div>
-                <div class="sys-info-item" style="grid-column: span 2; display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; background-color: var(--bg-tertiary); border-radius: 6px; border: 1px solid var(--border-color);">
-                  <span style="color: var(--text-muted);" data-i18n="sys-useragent">Kullanıcı Aracısı (User Agent):</span>
-                  <span id="sys-val-useragent" style="font-weight: 500; font-size: 11px; word-break: break-all; line-height: 1.4; text-align: left;">-</span>
+                <div class="sys-info-item"
+                  style="grid-column: span 2; display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; background-color: var(--bg-tertiary); border-radius: 6px; border: 1px solid var(--border-color);">
+                  <span style="color: var(--text-muted);" data-i18n="sys-useragent">Kullanıcı Aracısı (User
+                    Agent):</span>
+                  <span id="sys-val-useragent"
+                    style="font-weight: 500; font-size: 11px; word-break: break-all; line-height: 1.4; text-align: left;">-</span>
                 </div>
               </div>
             </div>
 
             <div class="settings-card">
               <div class="settings-card-title" data-i18n="diagnostics-utilities">Tanılama ve Araçlar</div>
-              <p class="settings-page-desc" style="margin-top: 4px; margin-bottom: 12px; font-size: 12px; color: var(--text-muted);" data-i18n="diagnostics-utilities-desc">Tanılama günlüklerine göz atın veya tarayıcı verilerini temizleyerek belleği boşaltın.</p>
+              <p class="settings-page-desc"
+                style="margin-top: 4px; margin-bottom: 12px; font-size: 12px; color: var(--text-muted);"
+                data-i18n="diagnostics-utilities-desc">Tanılama günlüklerine göz atın veya tarayıcı verilerini
+                temizleyerek belleği boşaltın.</p>
               <div class="settings-card-actions" style="display: flex; gap: 10px;">
                 <button id="btn-show-telemetry" class="settings-action-btn secondary" data-i18n="show-telemetry">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="vertical-align: middle; margin-right: 4px;"><path d="M19.5 3.5L18 2l-1.5 1.5L15 2l-1.5 1.5L12 2l-1.5 1.5L9 2 7.5 3.5 6 2 4.5 3.5 3 2v20l1.5-1.5L6 22l1.5-1.5L9 22l1.5-1.5L12 22l1.5-1.5L15 22l1.5-1.5L18 22l1.5-1.5L21 22V2l-1.5 1.5zM19 19.09H5V4.91h14v14.18zM6 15h12v2H6zm0-4h12v2H6zm0-4h12v2H6z"/></svg>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"
+                    style="vertical-align: middle; margin-right: 4px;">
+                    <path
+                      d="M19.5 3.5L18 2l-1.5 1.5L15 2l-1.5 1.5L12 2l-1.5 1.5L9 2 7.5 3.5 6 2 4.5 3.5 3 2v20l1.5-1.5L6 22l1.5-1.5L9 22l1.5-1.5L12 22l1.5-1.5L15 22l1.5-1.5L18 22l1.5-1.5L21 22V2l-1.5 1.5zM19 19.09H5V4.91h14v14.18zM6 15h12v2H6zm0-4h12v2H6zm0-4h12v2H6z" />
+                  </svg>
                   Telemetri Günlüğünü Göster
                 </button>
-                <button id="btn-clear-browser-data" class="settings-action-btn secondary" style="border-color: rgba(239, 68, 68, 0.2); color: #f87171;" data-i18n="clear-data">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="vertical-align: middle; margin-right: 4px;"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                <button id="btn-clear-browser-data" class="settings-action-btn secondary"
+                  style="border-color: rgba(239, 68, 68, 0.2); color: #f87171;" data-i18n="clear-data">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"
+                    style="vertical-align: middle; margin-right: 4px;">
+                    <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+                  </svg>
                   Tarayıcı Verilerini Temizle
                 </button>
               </div>
@@ -1122,7 +1261,8 @@
                 <span data-i18n="about-credits">OSLO Browser, OSLO Ekibi tarafından sevgiyle geliştirilmiştir.</span>
               </div>
               <div style="display: flex; justify-content: center; gap: 14px; font-size: 13px;">
-                <a href="#" id="link-visit-website" style="color: var(--accent-color); text-decoration: none;" data-i18n="visit-website">Web Sitesini Ziyaret Et</a>
+                <a href="#" id="link-visit-website" style="color: var(--accent-color); text-decoration: none;"
+                  data-i18n="visit-website">Web Sitesini Ziyaret Et</a>
                 <span style="color: var(--border-color);">|</span>
                 <span style="color: var(--text-muted);">© 2026 OSLO Browser</span>
               </div>
@@ -1165,8 +1305,10 @@
               <div class="password-generator-box">
                 <input id="generated-password-output" class="password-generator-output" type="text" readonly
                   spellcheck="false" autocomplete="off" value="">
-                <button id="btn-generate-password" class="settings-action-btn accent" data-i18n="password-generate-btn">Üret</button>
-                <button id="btn-copy-generated-password" class="settings-action-btn secondary" data-i18n="password-copy-btn">Kopyala</button>
+                <button id="btn-generate-password" class="settings-action-btn accent"
+                  data-i18n="password-generate-btn">Üret</button>
+                <button id="btn-copy-generated-password" class="settings-action-btn secondary"
+                  data-i18n="password-copy-btn">Kopyala</button>
               </div>
             </div>
 
@@ -1252,11 +1394,13 @@
       </div>
       <div id="clear-browser-data-body" class="modal-body">
         <div style="font-size: 13px; color: var(--text-main); line-height: 1.5;">
-          <p id="clear-browser-data-confirm-text" data-i18n="clear-data-confirm">Tüm önbellek, çerezler, yerel depolama verileri ve tarayıcı verileri temizlenecek. Devam etmek istiyor musunuz?</p>
+          <p id="clear-browser-data-confirm-text" data-i18n="clear-data-confirm">Tüm önbellek, çerezler, yerel depolama
+            verileri ve tarayıcı verileri temizlenecek. Devam etmek istiyor musunuz?</p>
         </div>
       </div>
       <div class="modal-footer" id="clear-browser-data-footer">
-        <button id="btn-cancel-clear-browser-data" class="modal-btn secondary-btn" data-i18n="modal-cancel">İptal</button>
+        <button id="btn-cancel-clear-browser-data" class="modal-btn secondary-btn"
+          data-i18n="modal-cancel">İptal</button>
         <button id="btn-confirm-clear-browser-data" class="modal-btn primary-btn"
           style="background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); color: #fff; border:none;"
           data-i18n="clear-data">Temizle</button>
@@ -1271,7 +1415,8 @@
         <div class="update-header-content">
           <div class="update-icon-badge">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 11h-2V7h2v6zm0 4h-2v-2h2v2z"/>
+              <path
+                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 11h-2V7h2v6zm0 4h-2v-2h2v2z" />
             </svg>
           </div>
           <h3 data-i18n="update-available-title">Yeni Sürüm Mevcut!</h3>
@@ -1282,28 +1427,29 @@
         <div class="update-version-flow">
           <div class="version-chip current">
             <span class="version-label">Mevcut</span>
-            <span class="version-number" id="update-current-version">v1.0.0-alpha.9</span>
+            <span class="version-number" id="update-current-version">v1.0.0-alpha.10</span>
           </div>
           <div class="version-arrow">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-              <path d="M16.01 11H4v2h12.01v3L20 12l-3.99-4v3z"/>
+              <path d="M16.01 11H4v2h12.01v3L20 12l-3.99-4v3z" />
             </svg>
           </div>
           <div class="version-chip latest">
             <span class="version-label">Yeni</span>
-            <span class="version-number" id="update-modal-version">v1.0.0-alpha.9</span>
+            <span class="version-number" id="update-modal-version">v1.0.0-alpha.10</span>
           </div>
         </div>
 
         <div class="update-notes-title-row">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+            <path
+              d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z" />
           </svg>
           <span data-i18n="release-notes-label">Yenilikler:</span>
         </div>
-        
+
         <div id="update-modal-notes" class="update-notes-container"></div>
-        
+
         <!-- Progress Container (Hidden by default) -->
         <div id="update-progress-container" class="update-progress-wrapper" style="display: none;">
           <div class="update-progress-info">
@@ -1315,15 +1461,18 @@
           </div>
           <div id="update-install-warning" class="update-install-warning">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="flex-shrink:0;">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+              <path
+                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
             </svg>
-            <span data-i18n="update-install-warning">İndirme tamamlanınca kurulum otomatik olarak başlatılacak. Lütfen bekleyin; OSLO Browser kapanabilir.</span>
+            <span data-i18n="update-install-warning">İndirme tamamlanınca kurulum otomatik olarak başlatılacak. Lütfen
+              bekleyin; OSLO Browser kapanabilir.</span>
           </div>
         </div>
       </div>
       <div class="modal-footer update-modal-footer">
         <button id="btn-cancel-update" class="modal-btn secondary-btn" data-i18n="modal-cancel">İptal</button>
-        <button id="btn-confirm-update" class="modal-btn primary-btn update-btn" data-i18n="download-update-btn">Şimdi İndir</button>
+        <button id="btn-confirm-update" class="modal-btn primary-btn update-btn" data-i18n="download-update-btn">Şimdi
+          İndir</button>
       </div>
     </div>
   </div>
@@ -1338,8 +1487,10 @@
       <div class="modal-body" style="display: flex; flex-direction: column; gap: 12px; max-height: 400px;">
         <!-- Sleek Glass Tab Selector -->
         <div class="telemetry-tabs">
-          <button id="telemetry-tab-events" class="telemetry-tab-btn active" data-tab="events" data-i18n="telemetry-events">Olaylar (Son 20)</button>
-          <button id="telemetry-tab-crashes" class="telemetry-tab-btn" data-tab="crashes" data-i18n="telemetry-crashes">Kilitlenmeler ve Hatalar</button>
+          <button id="telemetry-tab-events" class="telemetry-tab-btn active" data-tab="events"
+            data-i18n="telemetry-events">Olaylar (Son 20)</button>
+          <button id="telemetry-tab-crashes" class="telemetry-tab-btn" data-tab="crashes"
+            data-i18n="telemetry-crashes">Kilitlenmeler ve Hatalar</button>
         </div>
 
         <!-- Telemetry Panes -->
@@ -1351,16 +1502,20 @@
           <div id="telemetry-crashes-list" class="telemetry-log-list"></div>
         </div>
       </div>
-      <div class="modal-footer" style="display: flex; gap: 8px; justify-content: flex-end; align-items: center; width: 100%;">
-        <button id="btn-copy-telemetry" class="modal-btn secondary-btn" style="margin-right: auto; display: flex; align-items: center; gap: 6px;">
+      <div class="modal-footer"
+        style="display: flex; gap: 8px; justify-content: flex-end; align-items: center; width: 100%;">
+        <button id="btn-copy-telemetry" class="modal-btn secondary-btn"
+          style="margin-right: auto; display: flex; align-items: center; gap: 6px;">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-            <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+            <path
+              d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
           </svg>
           <span data-i18n="telemetry-copy">Kopyala</span>
         </button>
-        <button id="btn-clear-telemetry" class="modal-btn" style="background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); color: #fff; border: none; display: flex; align-items: center; gap: 6px;">
+        <button id="btn-clear-telemetry" class="modal-btn"
+          style="background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); color: #fff; border: none; display: flex; align-items: center; gap: 6px;">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
           </svg>
           <span data-i18n="telemetry-clear">Temizle</span>
         </button>
@@ -1437,50 +1592,63 @@
         <button id="close-password-audit-modal" class="modal-close-btn">&times;</button>
       </div>
       <div class="modal-body" style="max-height: 400px; overflow-y: auto;">
-        
+
         <!-- Scanning / Loading State -->
-        <div id="password-audit-loading" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 40px 0;">
-          <div class="settings-logo-spin" style="width: 48px; height: 48px; border: 4px solid rgba(255,255,255,0.1); border-top-color: var(--accent-color); border-radius: 50%; animation: spin 1s linear infinite;"></div>
-          <span style="font-size: 14px; color: var(--text-main); font-weight: 500;" data-i18n="password-audit-scanning">Şifreleriniz taranıyor...</span>
+        <div id="password-audit-loading"
+          style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 40px 0;">
+          <div class="settings-logo-spin"
+            style="width: 48px; height: 48px; border: 4px solid rgba(255,255,255,0.1); border-top-color: var(--accent-color); border-radius: 50%; animation: spin 1s linear infinite;">
+          </div>
+          <span style="font-size: 14px; color: var(--text-main); font-weight: 500;"
+            data-i18n="password-audit-scanning">Şifreleriniz taranıyor...</span>
         </div>
 
         <!-- Results State -->
         <div id="password-audit-results" style="display: none; flex-direction: column; gap: 16px; width: 100%;">
-          
+
           <!-- Summary Cards -->
           <div style="display: flex; gap: 10px; width: 100%;">
-            <div class="audit-stat-card" style="flex: 1; padding: 12px; border-radius: 12px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;">
+            <div class="audit-stat-card"
+              style="flex: 1; padding: 12px; border-radius: 12px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;">
               <span style="font-size: 11px; color: var(--text-muted);" data-i18n="password-audit-total">Toplam</span>
               <strong id="audit-total-count" style="font-size: 20px; color: var(--accent-color);">0</strong>
             </div>
-            <div class="audit-stat-card" style="flex: 1; padding: 12px; border-radius: 12px; background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;">
+            <div class="audit-stat-card"
+              style="flex: 1; padding: 12px; border-radius: 12px; background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;">
               <span style="font-size: 11px; color: #f87171;" data-i18n="password-audit-weak-count">Zayıf</span>
               <strong id="audit-weak-count" style="font-size: 20px; color: #ef4444;">0</strong>
             </div>
-            <div class="audit-stat-card" style="flex: 1; padding: 12px; border-radius: 12px; background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;">
+            <div class="audit-stat-card"
+              style="flex: 1; padding: 12px; border-radius: 12px; background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;">
               <span style="font-size: 11px; color: #fbbf24;" data-i18n="password-audit-reused-count">Tekrar Alan</span>
               <strong id="audit-reused-count" style="font-size: 20px; color: #f59e0b;">0</strong>
             </div>
-            <div class="audit-stat-card" style="flex: 1; padding: 12px; border-radius: 12px; background: rgba(220, 38, 38, 0.08); border: 1px solid rgba(220, 38, 38, 0.25); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;">
+            <div class="audit-stat-card"
+              style="flex: 1; padding: 12px; border-radius: 12px; background: rgba(220, 38, 38, 0.08); border: 1px solid rgba(220, 38, 38, 0.25); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;">
               <span style="font-size: 11px; color: #fecaca;" data-i18n="password-audit-breached-count">Sızıntı</span>
               <strong id="audit-breached-count" style="font-size: 20px; color: #f87171;">0</strong>
             </div>
           </div>
 
           <!-- All Safe Message -->
-          <div id="audit-all-safe" style="display: none; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 20px 0;">
-            <div style="width: 48px; height: 48px; border-radius: 50%; background-color: rgba(16, 185, 129, 0.1); color: #10b981; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 12px rgba(16, 185, 129, 0.2); animation: pulse 2s infinite;">
+          <div id="audit-all-safe"
+            style="display: none; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 20px 0;">
+            <div
+              style="width: 48px; height: 48px; border-radius: 50%; background-color: rgba(16, 185, 129, 0.1); color: #10b981; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 12px rgba(16, 185, 129, 0.2); animation: pulse 2s infinite;">
               <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
-                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
               </svg>
             </div>
-            <h4 style="font-size: 14px; font-weight: 600; color: #10b981; margin: 0;" data-i18n="password-audit-no-issues">Güvenlik riski bulunamadı!</h4>
-            <p style="font-size: 12px; color: var(--text-muted); margin: 0; line-height: 1.4;">Tüm şifreleriniz güçlü ve benzersiz görünüyor.</p>
+            <h4 style="font-size: 14px; font-weight: 600; color: #10b981; margin: 0;"
+              data-i18n="password-audit-no-issues">Güvenlik riski bulunamadı!</h4>
+            <p style="font-size: 12px; color: var(--text-muted); margin: 0; line-height: 1.4;">Tüm şifreleriniz güçlü ve
+              benzersiz görünüyor.</p>
           </div>
 
           <!-- Risks List Container -->
           <div id="audit-risks-container" style="display: flex; flex-direction: column; gap: 8px;">
-            <h4 style="font-size: 12px; font-weight: 600; color: var(--text-main); margin: 0 0 4px 0;" data-i18n="password-audit-issue-list">Bulunan Riskler</h4>
+            <h4 style="font-size: 12px; font-weight: 600; color: var(--text-main); margin: 0 0 4px 0;"
+              data-i18n="password-audit-issue-list">Bulunan Riskler</h4>
             <div id="audit-risks-list" style="display: flex; flex-direction: column; gap: 8px;">
               <!-- Risk rows rendered dynamically -->
             </div>
@@ -1490,7 +1658,8 @@
 
       </div>
       <div class="modal-footer">
-        <button id="btn-close-password-audit-modal" class="modal-btn secondary-btn" style="width: 100%;" data-i18n="modal-close">Kapat</button>
+        <button id="btn-close-password-audit-modal" class="modal-btn secondary-btn" style="width: 100%;"
+          data-i18n="modal-close">Kapat</button>
       </div>
     </div>
   </div>

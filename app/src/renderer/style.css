@@ -714,8 +714,28 @@ body.topbar-auto-hide:has(.bookmarks-bar:focus-within) #top-bar::before {
 /* Content Area Placeholder */
 #content-area {
   flex: 1;
-  background-color: #111214;
+  background-color: var(--content-surface-color, #111214);
+  background-image: var(--content-surface-image, none);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
   position: relative;
+  transition: background-color 0.2s ease;
+}
+
+.content-area-preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.08s ease;
+}
+
+#content-area.content-preview-active .content-area-preview {
+  opacity: 1;
 }
 
 /* Sliding Side Panels (Bookmarks & History) */
@@ -2180,12 +2200,20 @@ body.light-mode .space-btn.active {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
   padding: 8px 12px;
   font-size: 13px;
   color: var(--text-main);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
+}
+
+#tab-context-menu.constrained-to-sidebar .context-menu-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .context-menu-item:hover {
@@ -4178,7 +4206,7 @@ body.transparency-disabled .update-modal-card {
 
 /* Light mode background for content area behind hidden webview during modal display */
 body.light-mode #content-area {
-  background-color: var(--bg-primary) !important;
+  background-color: var(--content-surface-color, var(--bg-primary));
 }
 
 /* Split Screen Styles */

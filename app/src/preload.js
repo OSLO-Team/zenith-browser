@@ -1210,6 +1210,7 @@ const osloApi = {
       ipcRenderer.send('tab-bounds', bounds);
     }
   },
+  captureActiveTabPreview: () => ipcRenderer.invoke('active-tab-capture-preview'),
   showBookmarksFolderMenu: (folderId, x, y) => {
     if ((folderId === null || asString(folderId, 128)) && Number.isFinite(Number(x)) && Number.isFinite(Number(y))) {
       ipcRenderer.send('show-bookmarks-folder-menu', { folderId, x, y });

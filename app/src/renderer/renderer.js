@@ -3,7 +3,7 @@ import { state } from './js/state.js';
 import { applyLanguage, translations } from './js/i18n.js';
 import { renderTabs, updateBookmarkIcon } from './js/tabs.js';
 import { initPanels, renderBookmarks, renderBookmarksBar, renderHistory, renderDownloads } from './js/panels.js';
-import { initSettings } from './js/settings.js';
+import { initSettings, syncContentAreaSurface } from './js/settings.js';
 
 // Detect Windows OS to apply workaround for backdrop-filter rendering bugs
 if (navigator.userAgent.includes('Windows') || navigator.userAgent.includes('win32') || navigator.platform.toLowerCase().includes('win')) {
@@ -91,6 +91,69 @@ const bookmarkEditModal = document.getElementById('bookmark-edit-modal');
 const bookmarkEditName = document.getElementById('bookmark-edit-name');
 const bookmarkEditUrl = document.getElementById('bookmark-edit-url');
 const tabContextMenu = document.getElementById('tab-context-menu');
+let contentPreviewClearTimer = null;
+
+async function captureContentPreview() {
+  const contentArea = document.getElementById('content-area');
+  if (!contentArea || typeof window.oslo.captureActiveTabPreview !== 'function') return false;
+
+  if (contentPreviewClearTimer) {
+    clearTimeout(contentPreviewClearTimer);
+    contentPreviewClearTimer = null;
+  }
+
+  try {
+    const dataUrl = await window.oslo.captureActiveTabPreview();
+    if (!dataUrl) return false;
+
+    let preview = document.getElementById('content-area-preview');
+    if (!preview) {
+      preview = document.createElement('img');
+      preview.id = 'content-area-preview';
+      preview.className = 'content-area-preview';
+      preview.alt = '';
+      contentArea.appendChild(preview);
+    }
+
+    preview.src = dataUrl;
+    contentArea.classList.add('content-preview-active');
+    return true;
+  } catch (err) {
+    console.error('Failed to capture content preview:', err);
+    return false;
+  }
+}
+
+async function openModalWithContentPreview(modal) {
+  if (!modal) return;
+  await captureContentPreview();
+  modal.classList.add('open');
+  sendBounds();
+}
+
+function closeModalWithContentPreview(modal) {
+  modal?.classList.remove('open');
+  sendBounds();
+  clearContentPreviewSoon();
+}
+
+function clearContentPreviewSoon() {
+  if (contentPreviewClearTimer) clearTimeout(contentPreviewClearTimer);
+  contentPreviewClearTimer = setTimeout(() => {
+    const contentArea = document.getElementById('content-area');
+    document.getElementById('content-area-preview')?.remove();
+    contentArea?.classList.remove('content-preview-active');
+    contentPreviewClearTimer = null;
+  }, 120);
+}
+
+window.osloContentPreview = {
+  show: captureContentPreview,
+  openModal: openModalWithContentPreview,
+  closeModal: closeModalWithContentPreview,
+  clearSoon: clearContentPreviewSoon,
+  refreshBounds: sendBounds
+};
 
 // --- Window Resizing and Bounds Coordination ---
 export function sendBounds() {
@@ -112,12 +175,10 @@ export function sendBounds() {
   const isPermissionBarOpen = document.getElementById('permission-bar')?.style.display === 'flex';
   const isPasswordSaveBarOpen = document.getElementById('password-save-bar')?.style.display === 'flex';
 
-  const isDropdownOpen = !!document.querySelector('.bookmarks-bar-dropdown');
-
   const tabContextMenu = document.getElementById('tab-context-menu');
-  const bookmarksBarContextMenu = document.getElementById('bookmarks-bar-context-menu');
-  const isTabContextMenuOpen = tabContextMenu && tabContextMenu.style.display === 'block';
-  const isBookmarksBarContextMenuOpen = bookmarksBarContextMenu && bookmarksBarContextMenu.style.display === 'block';
+  const isTabContextMenuOverContent = tabContextMenu?.style.display === 'block'
+    && tabContextMenu.dataset.overlapsContent === 'true';
+  const isDropdownOpen = !!document.querySelector('.bookmarks-bar-dropdown');
 
   const isAutocompleteOpen = document.getElementById('autocomplete-dropdown')?.style.display === 'block';
   const isHistoryOpen = document.getElementById('history-panel')?.classList.contains('open');
@@ -136,10 +197,9 @@ export function sendBounds() {
     isSecurityInfoOpen ||
     isSpaceOpen ||
     isSpaceDeleteOpen ||
+    isTabContextMenuOverContent ||
     isDropdownOpen ||
     isAutocompleteOpen ||
-    isTabContextMenuOpen ||
-    isBookmarksBarContextMenuOpen ||
     isHistoryOpen ||
     isSettingsOpen ||
     isDownloadsOpen ||
@@ -212,7 +272,7 @@ if (navBack) {
 }
 
 if (navForward) {
-    navForward.addEventListener('click', () => {
+  navForward.addEventListener('click', () => {
     if (state.activeTabId) window.oslo.goForward(state.activeTabId);
   });
 }
@@ -428,12 +488,16 @@ document.getElementById('btn-confirm-clear-history')?.addEventListener('click', 
 
 // --- Bookmark Edit Modal logic ---
 const closeBookmarkEditModalFunc = () => {
-  bookmarkEditModal?.classList.remove('open');
-  sendBounds();
+  closeModalWithContentPreview(bookmarkEditModal);
 };
 
 document.getElementById('btn-cancel-bookmark-edit')?.addEventListener('click', closeBookmarkEditModalFunc);
 document.getElementById('close-bookmark-edit-modal')?.addEventListener('click', closeBookmarkEditModalFunc);
+bookmarkEditModal?.addEventListener('click', (e) => {
+  if (e.target === bookmarkEditModal) {
+    closeBookmarkEditModalFunc();
+  }
+});
 
 document.getElementById('btn-save-bookmark-edit')?.addEventListener('click', () => {
   const newTitle = bookmarkEditName?.value.trim();
@@ -462,8 +526,15 @@ document.getElementById('btn-save-bookmark-edit')?.addEventListener('click', () 
 // Dismiss context menu on click
 document.addEventListener('click', () => {
   let changed = false;
+  let shouldClearPreview = false;
   if (tabContextMenu && tabContextMenu.style.display === 'block') {
+    shouldClearPreview = tabContextMenu.dataset.overlapsContent === 'true';
     tabContextMenu.style.display = 'none';
+    tabContextMenu.style.visibility = '';
+    tabContextMenu.style.width = '';
+    tabContextMenu.style.maxWidth = '';
+    tabContextMenu.classList.remove('constrained-to-sidebar');
+    delete tabContextMenu.dataset.overlapsContent;
     changed = true;
   }
   const bookmarksBarContextMenu = document.getElementById('bookmarks-bar-context-menu');
@@ -480,6 +551,9 @@ document.addEventListener('click', () => {
   }
   if (changed) {
     sendBounds();
+    if (shouldClearPreview) {
+      clearContentPreviewSoon();
+    }
   }
 });
 
@@ -525,6 +599,7 @@ window.oslo.onTabCreated((tab) => {
   }
   state.activeTabId = tab.id;
   state.activeSpace = tab.space || 'Genel';
+  syncContentAreaSurface();
 
   renderTabs();
   updateBookmarkIcon();
@@ -536,6 +611,7 @@ window.oslo.onTabUpdated((tabUpdate) => {
   if (state.tabs[tabUpdate.id]) {
     const oldUrl = state.tabs[tabUpdate.id].url;
     state.tabs[tabUpdate.id] = { ...state.tabs[tabUpdate.id], ...tabUpdate };
+    syncContentAreaSurface();
 
     if (tabUpdate.id === state.activeTabId) {
       if (tabUpdate.url !== undefined) {
@@ -592,6 +668,7 @@ window.oslo.onTabClosed((tabId) => {
 window.oslo.onTabSelected((tabId) => {
   state.activeTabId = tabId;
   const activeTab = state.tabs[tabId];
+  syncContentAreaSurface();
 
   if (activeTab) {
     state.activeSpace = activeTab.space || 'Genel';
@@ -1585,6 +1662,7 @@ window.addEventListener('keydown', (e) => {
     if (closedAny) {
       e.preventDefault();
       sendBounds();
+      clearContentPreviewSoon();
     }
   }
 });
@@ -1748,7 +1826,7 @@ document.getElementById('btn-check-updates')?.addEventListener('click', () => {
       const modalVersion = document.getElementById('update-modal-version');
       const modalNotes = document.getElementById('update-modal-notes');
 
-      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-alpha.9'}`;
+      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-alpha.10'}`;
       if (modalVersion) modalVersion.textContent = `v${info.latestVersion}`;
       if (modalNotes) modalNotes.innerHTML = parseMarkdown(info.releaseNotes);
 
@@ -1791,7 +1869,7 @@ document.getElementById('btn-confirm-update')?.addEventListener('click', () => {
   const url = updateModal?.dataset.downloadUrl;
   const checksum = updateModal?.dataset.checksum || updateModal?.dataset.sha256 || '';
   const checksumAlgorithm = updateModal?.dataset.checksumAlgorithm || (checksum.length === 128 ? 'sha512' : 'sha256');
-  const version = (document.getElementById('update-modal-version')?.textContent || '1.0.0-alpha.9').replace(/^v/, '');
+  const version = (document.getElementById('update-modal-version')?.textContent || '1.0.0-alpha.10').replace(/^v/, '');
 
   if (!url) {
     window.oslo.openExternalLink('https://oslobrowser.com/download');
@@ -1878,7 +1956,7 @@ function autoCheckForUpdates() {
       const modalVersion = document.getElementById('update-modal-version');
       const modalNotes = document.getElementById('update-modal-notes');
 
-      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-alpha.9'}`;
+      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-alpha.10'}`;
       if (modalVersion) modalVersion.textContent = `v${info.latestVersion}`;
       if (modalNotes) modalNotes.innerHTML = parseMarkdown(info.releaseNotes);
 
@@ -2190,13 +2268,11 @@ function renderPermissionsList() {
 
 document.getElementById('settings-manage-permissions')?.addEventListener('click', () => {
   renderPermissionsList();
-  permissionsManagerModal?.classList.add('open');
-  sendBounds();
+  openModalWithContentPreview(permissionsManagerModal);
 });
 
 const closePermissionsModalFunc = () => {
-  permissionsManagerModal?.classList.remove('open');
-  sendBounds();
+  closeModalWithContentPreview(permissionsManagerModal);
 };
 
 document.getElementById('close-permissions-modal')?.addEventListener('click', closePermissionsModalFunc);
@@ -2312,13 +2388,11 @@ function showSecurityInfoModal() {
     });
   }
 
-  securityInfoModal.classList.add('open');
-  sendBounds();
+  openModalWithContentPreview(securityInfoModal);
 }
 
 const closeSecurityInfoModalFunc = () => {
-  securityInfoModal?.classList.remove('open');
-  sendBounds();
+  closeModalWithContentPreview(securityInfoModal);
 };
 
 // Bind security indicator click
@@ -2372,8 +2446,7 @@ document.getElementById('btn-manage-permissions-shortcut')?.addEventListener('cl
   closeSecurityInfoModalFunc();
   // Open permissions manager modal
   renderPermissionsList();
-  permissionsManagerModal?.classList.add('open');
-  sendBounds();
+  openModalWithContentPreview(permissionsManagerModal);
 });
 
 // --- Space Modal Prompt Implementation ---
@@ -2396,12 +2469,10 @@ function showSpaceModal(title, label, defaultValue, callback) {
     selectedAddColor = presetColors[0];
     initWorkspaceCustomizationGrids();
 
-    modal.classList.add('open');
-    sendBounds();
-    setTimeout(() => {
+    openModalWithContentPreview(modal).then(() => setTimeout(() => {
       inputEl.focus();
       inputEl.select();
-    }, 100);
+    }, 100));
   }
 }
 
@@ -2409,9 +2480,8 @@ const spaceModal = document.getElementById('space-modal');
 const spaceInput = document.getElementById('space-modal-input');
 
 const closeSpaceModalFunc = () => {
-  spaceModal?.classList.remove('open');
   spaceModalCallback = null;
-  sendBounds();
+  closeModalWithContentPreview(spaceModal);
 };
 
 document.getElementById('close-space-modal')?.addEventListener('click', closeSpaceModalFunc);
@@ -2478,14 +2548,12 @@ function showSpaceDeleteModal(currentName, confirmText, deleteCallback, renameCa
 
     spaceDeleteCallback = deleteCallback;
     spaceRenameCallback = renameCallback;
-    modal.classList.add('open');
-    sendBounds();
-    setTimeout(() => {
+    openModalWithContentPreview(modal).then(() => setTimeout(() => {
       if (renameInput) {
         renameInput.focus();
         renameInput.select();
       }
-    }, 100);
+    }, 100));
   }
 }
 
@@ -2493,10 +2561,9 @@ const spaceDeleteModal = document.getElementById('space-delete-modal');
 const spaceDeleteRenameInput = document.getElementById('space-delete-rename-input');
 
 const closeSpaceDeleteModalFunc = () => {
-  spaceDeleteModal?.classList.remove('open');
   spaceDeleteCallback = null;
   spaceRenameCallback = null;
-  sendBounds();
+  closeModalWithContentPreview(spaceDeleteModal);
 };
 
 document.getElementById('close-space-delete-modal')?.addEventListener('click', closeSpaceDeleteModalFunc);

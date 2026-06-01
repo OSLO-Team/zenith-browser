@@ -1,6 +1,6 @@
 {
   "name": "oslo-browser",
-  "version": "1.0.0-alpha.9",
+  "version": "1.0.0-alpha.10",
   "description": "OSLO Browser - Elegant Electron-based Custom Web Browser",
   "main": "src/main/main.js",
   "scripts": {
@@ -17,7 +17,8 @@
   "build": {
     "appId": "com.oslo.browser",
     "productName": "OSLO Browser",
-    "buildVersion": "1.0.0-alpha.9",
+    "buildVersion": "1.0.0-alpha.10",
+    "buildNumber": "10",
     "directories": {
       "output": "dist"
     },

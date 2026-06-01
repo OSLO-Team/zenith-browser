@@ -84,7 +84,13 @@ const DEFAULT_SETTINGS = {
   hardwareAutoOptimized: false
 };
 
-const settingsStore = new Store('settings', DEFAULT_SETTINGS);
+const FACTORY_DEFAULT_SETTINGS = Object.freeze({ ...DEFAULT_SETTINGS });
+
+function createDefaultSettings() {
+  return { ...FACTORY_DEFAULT_SETTINGS };
+}
+
+const settingsStore = new Store('settings', createDefaultSettings());
 const bookmarksStore = new Store('bookmarks', { bookmarks: [] });
 const historyStore = new Store('history', { history: [] });
 const downloadsStore = new Store('downloads', { downloads: [] });
@@ -601,6 +607,47 @@ function createMainWindow() {
   return win;
 }
 
+function removeCustomCssFromView(view) {
+  const wc = view?.webContents;
+  if (!wc || wc.isDestroyed()) return;
+
+  const keys = view.__osloCustomCssKeys || [];
+  view.__osloCustomCssKeys = [];
+  if (typeof wc.removeInsertedCSS !== 'function') return;
+
+  keys.forEach(key => {
+    if (key) {
+      wc.removeInsertedCSS(key).catch(() => { });
+    }
+  });
+}
+
+function applyCustomCssToView(view, css) {
+  const wc = view?.webContents;
+  if (!wc || wc.isDestroyed()) return;
+
+  removeCustomCssFromView(view);
+  const nextCss = typeof css === 'string' ? css : '';
+  if (!nextCss.trim()) return;
+
+  wc.insertCSS(nextCss)
+    .then(key => {
+      if (key) view.__osloCustomCssKeys = [key];
+    })
+    .catch(err => console.error('Failed to inject custom CSS:', err));
+}
+
+function applyCustomCssToOpenTabs(css) {
+  Object.values(tabs).forEach(tab => {
+    if (tab.view && !tab.isSleeping) {
+      applyCustomCssToView(tab.view, css);
+    }
+    if (tab.splitView && !tab.isSleeping) {
+      applyCustomCssToView(tab.splitView, css);
+    }
+  });
+}
+
 function setupViewListeners(tab, view, isSplitSide) {
   if (!view) return;
   const wc = view.webContents;
@@ -611,7 +658,7 @@ function setupViewListeners(tab, view, isSplitSide) {
     const isActive = isSplitSide ? (tab.activeSplitSide === 'split') : (tab.activeSplitSide === 'main');
     if (isSplitSide) tab.isSplitLoading = true;
     else tab.isLoading = true;
-    
+
     if (isActive) {
       sendToUI(getWin(), 'ui-tab-updated', { id: tabId, isLoading: true });
     }
@@ -621,7 +668,7 @@ function setupViewListeners(tab, view, isSplitSide) {
     const isActive = isSplitSide ? (tab.activeSplitSide === 'split') : (tab.activeSplitSide === 'main');
     if (isSplitSide) tab.isSplitLoading = false;
     else tab.isLoading = false;
-    
+
     if (isActive) {
       sendToUI(getWin(), 'ui-tab-updated', { id: tabId, isLoading: false });
     }
@@ -894,7 +941,9 @@ function setupViewListeners(tab, view, isSplitSide) {
   wc.on('did-finish-load', () => {
     const customCss = settingsStore.get('customCss');
     if (settingsStore.get('customCssEnabled') !== false && customCss) {
-      wc.insertCSS(customCss).catch(err => console.error('Failed to inject custom CSS:', err));
+      applyCustomCssToView(view, customCss);
+    } else {
+      removeCustomCssFromView(view);
     }
   });
 
@@ -1347,8 +1396,8 @@ function isMainUiSender(event) {
 }
 
 function getSenderTab(event) {
-  return Object.values(tabs).find(tab => 
-    (tab.view && tab.view.webContents === event.sender) || 
+  return Object.values(tabs).find(tab =>
+    (tab.view && tab.view.webContents === event.sender) ||
     (tab.splitView && tab.splitView.webContents === event.sender)
   ) || null;
 }
@@ -1405,13 +1454,13 @@ function assertSettingsReadSender(event) {
 }
 
 function isKnownSettingKey(key) {
-  return Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, key);
+  return Object.prototype.hasOwnProperty.call(FACTORY_DEFAULT_SETTINGS, key);
 }
 
 function isValidSettingValue(key, value) {
   if (!isKnownSettingKey(key)) return false;
 
-  const defaultValue = DEFAULT_SETTINGS[key];
+  const defaultValue = FACTORY_DEFAULT_SETTINGS[key];
   if (typeof defaultValue === 'boolean') return typeof value === 'boolean';
   if (typeof defaultValue === 'number') return typeof value === 'number' && Number.isFinite(value);
   if (typeof defaultValue === 'string') return typeof value === 'string';
@@ -1870,10 +1919,10 @@ ipcMain.on('tab-toggle-split', (event, tabId) => {
         zoomFactor: newTab.zoomFactor,
         favicon: newTab.favicon || null
       });
-      
+
       // Force UI back to the current tab, since ui-tab-created sets activeTabId in the renderer
       sendToUI(win, 'ui-tab-selected', tab.id);
-      
+
       saveSession();
     }
   } else {
@@ -1932,8 +1981,8 @@ ipcMain.on('tab-toggle-split', (event, tabId) => {
 });
 
 ipcMain.on('tab-view-focus', (event) => {
-  const tab = Object.values(tabs).find(t => 
-    (t.view && t.view.webContents === event.sender) || 
+  const tab = Object.values(tabs).find(t =>
+    (t.view && t.view.webContents === event.sender) ||
     (t.splitView && t.splitView.webContents === event.sender)
   );
   if (!tab) return;
@@ -1942,13 +1991,13 @@ ipcMain.on('tab-view-focus', (event) => {
     tab.activeSplitSide = side;
     const win = BrowserWindow.fromId(tab.windowId);
     const activeWc = side === 'split' ? tab.splitView.webContents : tab.view.webContents;
-    
+
     if (activeWc && !activeWc.isFocused()) {
       activeWc.focus();
     }
 
     sendToUI(win, 'ui-split-side-focused', { tabId: tab.id, side: side });
-    
+
     sendToUI(win, 'ui-tab-updated', {
       id: tab.id,
       url: side === 'split' ? tab.splitUrl : tab.url,
@@ -1999,6 +2048,25 @@ ipcMain.on('open-external', (event, url) => {
   if (ignoreUntrustedMainUiSender(event, 'open-external')) return;
   if (url) {
     shell.openExternal(url);
+  }
+});
+
+ipcMain.handle('active-tab-capture-preview', async (event) => {
+  const win = assertMainUiSender(event);
+  const activeTabId = activeTabs[win.id];
+  const tab = activeTabId ? tabs[activeTabId] : null;
+  const view = tab && tab.activeSplitSide === 'split' && tab.splitView ? tab.splitView : tab?.view;
+  const wc = view?.webContents;
+
+  if (!wc || wc.isDestroyed()) return '';
+
+  try {
+    const image = await wc.capturePage();
+    if (!image || image.isEmpty()) return '';
+    return image.toDataURL();
+  } catch (err) {
+    console.error('[Preview] Failed to capture active tab:', err);
+    return '';
   }
 });
 
@@ -2593,7 +2661,7 @@ ipcMain.handle('download-update', async (event, { url, version, sha256, checksum
       if (file) {
         file.destroy();
       }
-    } catch (e) {}
+    } catch (e) { }
     try {
       if (fs.existsSync(installerPath)) {
         fs.unlinkSync(installerPath);
@@ -2902,26 +2970,23 @@ function applySetting(key, value) {
     adblock.setHttpsOnlyEnabled(value);
   } else if (networkPrivacyKeys.has(key)) {
     syncNetworkPrivacyOptions();
-  } else if (key === 'customCss' && settingsStore.get('customCssEnabled') !== false) {
-    Object.values(tabs).forEach(tab => {
-      if (tab.view && !tab.isSleeping) {
-        tab.view.webContents.insertCSS(value).catch(() => { });
-      }
-    });
-  } else if (key === 'customCssEnabled' && value && settingsStore.get('customCss')) {
-    const customCss = settingsStore.get('customCss');
-    Object.values(tabs).forEach(tab => {
-      if (tab.view && !tab.isSleeping) {
-        tab.view.webContents.insertCSS(customCss).catch(() => { });
-      }
-    });
+  } else if (key === 'customCss') {
+    if (settingsStore.get('customCssEnabled') !== false) {
+      applyCustomCssToOpenTabs(value);
+    } else if (!value) {
+      applyCustomCssToOpenTabs('');
+    }
+  } else if (key === 'customCssEnabled') {
+    applyCustomCssToOpenTabs(value ? (settingsStore.get('customCss') || '') : '');
   } else if (key === 'defaultPageZoom') {
     const zoom = parseFloat(value) || 1.0;
     Object.values(tabs).forEach(tab => {
       tab.zoomFactor = zoom;
-      if (tab.view && !tab.isSleeping && tab.view.webContents) {
-        tab.view.webContents.setZoomFactor(zoom);
-      }
+      [tab.view, tab.splitView].forEach(view => {
+        if (view && !tab.isSleeping && view.webContents) {
+          view.webContents.setZoomFactor(zoom);
+        }
+      });
       const tabWindow = BrowserWindow.fromId(tab.windowId);
       sendToUI(tabWindow, 'ui-zoom-changed', { tabId: tab.id, zoom });
     });
@@ -3010,10 +3075,15 @@ ipcMain.handle('settings-import', async (event) => {
 ipcMain.handle('settings-reset', async (event) => {
   assertMainUiSender(event);
   try {
-    for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
-      settingsStore.set(key, value);
+    const defaults = createDefaultSettings();
+    settingsStore.replace(defaults);
+    bookmarksStore.set('bookmarks', []);
+    for (const [key, value] of Object.entries(defaults)) {
       applySetting(key, value);
     }
+    windows.forEach(win => {
+      sendToUI(win, 'ui-bookmarks-updated', []);
+    });
     return settingsStore.data;
   } catch (error) {
     console.error('Failed to reset settings:', error);
@@ -3441,11 +3511,7 @@ ipcMain.handle('custom-css-set', (event, css) => {
   assertMainUiSender(event);
   settingsStore.set('customCss', css);
   if (settingsStore.get('customCssEnabled') !== false) {
-    Object.values(tabs).forEach(tab => {
-      if (tab.view && !tab.isSleeping) {
-        tab.view.webContents.insertCSS(css).catch(() => { });
-      }
-    });
+    applyCustomCssToOpenTabs(css);
   }
   return css;
 });
@@ -3543,17 +3609,17 @@ function optimizePerformanceForHardware() {
   if (settingsStore.get('hardwareAutoOptimized')) {
     return;
   }
-  
+
   // Criteria: RAM <= 8.5 GB or CPU cores <= 4
   const isOldHardware = totalMemoryGB <= 8.5 || cpuCores <= 4;
-  
+
   if (isOldHardware) {
     // Enable performance optimizations
     settingsStore.set('sleepTabsEnabled', true);
     settingsStore.set('sleepTabsTimeout', 15);
     settingsStore.set('reduceMotion', true);
     settingsStore.set('transparencyEnabled', false);
-    
+
     // Log telemetry event if enabled
     if (settingsStore.get('telemetryEnabled')) {
       try {
@@ -3574,7 +3640,7 @@ function optimizePerformanceForHardware() {
       }
     }
   }
-  
+
   settingsStore.set('hardwareAutoOptimized', true);
 }
 

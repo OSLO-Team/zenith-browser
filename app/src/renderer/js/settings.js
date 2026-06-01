@@ -46,6 +46,13 @@ const appearanceSettingKeys = new Set(Object.keys(appearanceDefaults));
 let appearanceSettings = { ...appearanceDefaults };
 let systemThemeQuery = null;
 
+const newtabSurfaceBackgrounds = {
+  aurora: 'radial-gradient(circle at 20% 20%, rgba(0, 221, 255, 0.28), transparent 34%), radial-gradient(circle at 78% 18%, rgba(139, 92, 246, 0.22), transparent 30%), linear-gradient(135deg, #071014 0%, #111827 100%)',
+  dawn: 'linear-gradient(135deg, #1f2937 0%, #7c2d12 45%, #f59e0b 100%)',
+  forest: 'linear-gradient(135deg, #052e16 0%, #14532d 45%, #0f172a 100%)',
+  mono: 'linear-gradient(135deg, #0f172a 0%, #27272a 50%, #111827 100%)'
+};
+
 const privacyCheckboxControls = {
   clearCookiesOnExit: 'settings-clear-cookies-on-exit',
   fingerprintProtection: 'settings-fingerprint-protection',
@@ -154,6 +161,66 @@ function resolveThemeMode(mode) {
     return systemThemeQuery?.matches ? 'light' : 'dark';
   }
   return mode === 'light' ? 'light' : 'dark';
+}
+
+function sanitizeCssUrl(value) {
+  return String(value || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/[\r\n]/g, '');
+}
+
+function isActiveNewTab() {
+  const activeTab = state.tabs[state.activeTabId];
+  if (!activeTab) return true;
+
+  const url = activeTab.url || '';
+  return !url || url === 'oslo://newtab' || url.includes('newtab.html');
+}
+
+function getNewTabSurface() {
+  const resolvedTheme = resolveThemeMode(appearanceSettings.theme);
+  const type = appearanceSettings.newtabBackgroundType || 'default';
+  const wallpaper = (appearanceSettings.newtabWallpaper || '').trim();
+
+  if ((type === 'url' || type === 'file') && wallpaper) {
+    return {
+      color: resolvedTheme === 'light' ? '#f3f4f6' : '#0b0c0e',
+      image: `linear-gradient(rgba(0, 0, 0, 0.38), rgba(0, 0, 0, 0.38)), url("${sanitizeCssUrl(wallpaper)}")`
+    };
+  }
+
+  if (type === 'color') {
+    return {
+      color: normalizeHexColor(appearanceSettings.newtabBackgroundColor, resolvedTheme === 'light' ? '#f3f4f6' : '#0b0c0e'),
+      image: 'none'
+    };
+  }
+
+  if (type === 'preset') {
+    return {
+      color: '#0b0c0e',
+      image: newtabSurfaceBackgrounds[appearanceSettings.newtabPresetWallpaper] || newtabSurfaceBackgrounds.aurora
+    };
+  }
+
+  return resolvedTheme === 'light'
+    ? { color: '#f3f4f6', image: 'linear-gradient(135deg, #f8fafc 0%, #e5e7eb 100%)' }
+    : { color: '#0b0c0e', image: newtabSurfaceBackgrounds.aurora };
+}
+
+export function syncContentAreaSurface() {
+  const contentArea = document.getElementById('content-area');
+  if (!contentArea) return;
+
+  const isNewTab = isActiveNewTab();
+  const surface = isNewTab
+    ? getNewTabSurface()
+    : { color: 'var(--bg-primary)', image: 'none' };
+
+  contentArea.classList.toggle('newtab-surface', isNewTab);
+  contentArea.style.setProperty('--content-surface-color', surface.color);
+  contentArea.style.setProperty('--content-surface-image', surface.image);
 }
 
 function applyThemeMode(mode) {
@@ -275,6 +342,7 @@ function applyAppearancePreferences() {
   applyLocalCustomCss(appearanceSettings.customCss || '');
   updateAppearanceControl('tabHeight', appearanceSettings.tabHeight);
   updateAppearanceControl('sidebarWidth', appearanceSettings.sidebarWidth);
+  syncContentAreaSurface();
   window.dispatchEvent(new Event('resize'));
 }
 
@@ -318,6 +386,8 @@ export function applySettingChange(key, value) {
       break;
     }
     case 'language': {
+      const select = document.getElementById('settings-language');
+      if (select) select.value = value;
       applyLanguage(value);
       break;
     }
@@ -1214,6 +1284,9 @@ export function initSettings() {
         if (confirmed) {
           window.oslo.resetSettings().then((updated) => {
             if (updated) {
+              Object.entries(updated).forEach(([key, value]) => {
+                applySettingChange(key, value);
+              });
               const successMsg = translations[state.currentLang]['settings-reset-success'] || 'Tüm ayarlar başarıyla sıfırlandı!';
               showCustomAlert(title, successMsg).then(() => {
                 window.location.reload();
@@ -1538,8 +1611,8 @@ export function loadAboutTabSystemInfo() {
     const valV8 = document.getElementById('sys-val-v8');
     const valUseragent = document.getElementById('sys-val-useragent');
     
-    if (versionDisplay) versionDisplay.textContent = info.appVersion || '1.0.0-alpha.9';
-    if (versionDisplayMain) versionDisplayMain.textContent = info.appVersion || '1.0.0-alpha.9';
+    if (versionDisplay) versionDisplay.textContent = info.appVersion || '1.0.0-alpha.10';
+    if (versionDisplayMain) versionDisplayMain.textContent = info.appVersion || '1.0.0-alpha.10';
     if (valElectron) valElectron.textContent = info.electron || '-';
     if (valChrome) valChrome.textContent = info.chrome || '-';
     if (valNode) valNode.textContent = info.node || '-';
