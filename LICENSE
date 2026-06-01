@@ -5,18 +5,21 @@ Copyright © 2026 Emir Can Turan (OSLO Team). All Rights Reserved.
 OSLO Browser and its source code are proprietary software owned by
 Emir Can Turan (OSLO Team).
 
-This repository is source-available for viewing, inspection, and
-development transparency purposes only.
+This repository is source-available for viewing, inspection, local development,
+personal experimentation, and development transparency purposes.
 
 You may:
 
 - View the source code
-- Fork the repository for personal inspection and review
+- Fork the repository
+- Modify the source code for personal use and experimentation
+- Build and run the software locally
 
 You may NOT:
 
-- Copy, reuse, or incorporate the code into other projects
-- Modify and redistribute the software or its source code
+- Redistribute modified or unmodified versions
+- Publish forks as alternative releases
+- Reuse code, assets, or components in other projects
 - Commercially use the software or its components
 - Publicly distribute derivative works
 
