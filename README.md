@@ -1,21 +1,28 @@
 # OSLO Browser
 
-Modern browsing. Privacy first.
+**Modern browsing. Privacy first.**
 
-OSLO Browser is a modern desktop web browser built by OSLO Team using Electron.
+OSLO Browser is a modern desktop web browser developed by **OSLO Team**.
 
-Designed around privacy, performance, security, and customization, OSLO Browser delivers a powerful browsing experience with a clean UI and advanced browser functionality.
+Built around **privacy**, **performance**, **security**, and **customization**, OSLO Browser delivers a powerful browsing experience with a clean interface, advanced browser functionality, and a compact user experience.
+
+Designed for users who value **control**, **speed**, and **privacy-focused browsing**.
+
+---
 
 ## Core Features
 
-✔ Modern UI/UX  
-✔ Privacy & security enhancements  
-✔ Workspace support  
-✔ Password security tools  
-✔ Download management  
-✔ Advanced customization  
-✔ Performance optimizations  
+✔ Modern & clean UI/UX
+✔ Privacy-focused browsing experience
+✔ Security enhancements
+✔ Workspace support
+✔ Password security tools
+✔ Download management
+✔ Advanced customization
+✔ Performance optimizations
 ✔ Electron-powered architecture
+
+---
 
 ## Development
 
@@ -26,15 +33,33 @@ npm install
 npm start
 ```
 
+---
+
 ## Built With
 
-- Electron
-- JavaScript
-- HTML
-- CSS
+* Electron
+* JavaScript
+* HTML
+* CSS
+
+---
 
 ## License
 
-This repository and its contents are proprietary.
+Copyright © OSLO Team. All Rights Reserved.
 
-See the `LICENSE` file for licensing information.
+This repository is **source-available** for viewing, inspection, and development transparency purposes.
+
+You may:
+
+✔ View the source code
+✔ Fork the repository for personal inspection and review
+
+You may **not**:
+
+✖ Modify the software for redistribution
+✖ Reuse code, assets, or components in other projects
+✖ Distribute modified versions
+✖ Use the project commercially without explicit permission
+
+See the `LICENSE` file for full licensing terms.
