@@ -10,14 +10,14 @@ Designed for users who value **control**, **speed**, and **privacy-focused brows
 
 ## Core Features
 
-- ✔ Modern UI/UX
-- ✔ Privacy & security enhancements
-- ✔ Workspace support
-- ✔ Password security tools
-- ✔ Download management
-- ✔ Advanced customization
-- ✔ Performance optimizations
-- ✔ Electron-powered architecture
+* ✔ Modern UI/UX
+* ✔ Privacy & security enhancements
+* ✔ Workspace support
+* ✔ Password security tools
+* ✔ Download management
+* ✔ Advanced customization
+* ✔ Performance optimizations
+* ✔ Electron-powered architecture
 
 ## Development
 
@@ -39,8 +39,22 @@ npm start
 
 Copyright © **OSLO Team**. All Rights Reserved.
 
-This repository is **source-available** for viewing, inspection, and development transparency purposes.
+This repository is **source-available** for viewing, inspection, development transparency, personal experimentation, and local development purposes.
 
-The source code may be viewed and forked for inspection and review. Modification, redistribution, commercial use, or reuse of the project or its components is prohibited without explicit permission.
+You may:
+
+* ✔ View the source code
+* ✔ Fork the repository
+* ✔ Modify the source code for personal use and experimentation
+* ✔ Build and run the project locally
+
+You may **NOT**:
+
+* ✖ Redistribute modified or unmodified versions
+* ✖ Publish forks as alternative releases
+* ✖ Reuse code, assets, or components in other projects
+* ✖ Use the software commercially
+
+without explicit written permission from **OSLO Team**.
 
 See the `LICENSE` file for full licensing terms.
