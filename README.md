@@ -1,12 +1,12 @@
-OSLO Browser
+# OSLO Browser
 
-Modern browsing. Privacy first.
+**Modern browsing. Privacy first.**
 
-OSLO Browser is a modern desktop web browser developed by OSLO Team.
+OSLO Browser is a modern desktop web browser developed by **OSLO Team**.
 
-Built around privacy, performance, security, and customization, OSLO Browser delivers a powerful browsing experience with a clean interface, advanced browser functionality, and a compact user experience.
+Built around **privacy**, **performance**, **security**, and **customization**, OSLO Browser delivers a powerful browsing experience with a clean interface, advanced browser functionality, and a compact user experience.
 
-Designed for users who value control, speed, and privacy-focused browsing.
+Designed for users who value **control**, **speed**, and **privacy-focused browsing**.
 
 ## Core Features
 
