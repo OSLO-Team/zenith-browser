@@ -8,15 +8,16 @@ Built around privacy, performance, security, and customization, OSLO Browser del
 
 Designed for users who value control, speed, and privacy-focused browsing.
 
-✔ Modern UI/UX
-✔ Privacy & security enhancements
-✔ Workspace support
-✔ Password security tools
-✔ Download management
-✔ Advanced customization
-✔ Performance optimizations
-✔ Electron-powered architecture
-Development
+## Core Features
+
+- ✔ Modern UI/UX
+- ✔ Privacy & security enhancements
+- ✔ Workspace support
+- ✔ Password security tools
+- ✔ Download management
+- ✔ Advanced customization
+- ✔ Performance optimizations
+- ✔ Electron-powered architecture
 
 git clone https://github.com/OSLO-Team/oslo-browser.git
 cd oslo-browser
