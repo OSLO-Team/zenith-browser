@@ -19,22 +19,28 @@ Designed for users who value **control**, **speed**, and **privacy-focused brows
 - ✔ Performance optimizations
 - ✔ Electron-powered architecture
 
+## Development
+
+```bash
 git clone https://github.com/OSLO-Team/oslo-browser.git
 cd oslo-browser
 npm install
 npm start
+```
 
-Built With
+## Built With
 
-    Electron
-    JavaScript
-    HTML
-    CSS
+* Electron
+* JavaScript
+* HTML
+* CSS
 
-License
+## License
 
-Copyright © OSLO Team. All Rights Reserved.
+Copyright © **OSLO Team**. All Rights Reserved.
 
-This repository is source-available for viewing, inspection, and development transparency purposes.
+This repository is **source-available** for viewing, inspection, and development transparency purposes.
 
-See the LICENSE file for licensing information.
+The source code may be viewed and forked for inspection and review. Modification, redistribution, commercial use, or reuse of the project or its components is prohibited without explicit permission.
+
+See the `LICENSE` file for full licensing terms.
