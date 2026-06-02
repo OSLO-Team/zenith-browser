@@ -1974,7 +1974,7 @@ document.getElementById('btn-check-updates')?.addEventListener('click', () => {
       const modalVersion = document.getElementById('update-modal-version');
       const modalNotes = document.getElementById('update-modal-notes');
 
-      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-alpha.13'}`;
+      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.0'}`;
       if (modalVersion) modalVersion.textContent = `v${info.latestVersion}`;
       if (modalNotes) modalNotes.innerHTML = parseMarkdown(info.releaseNotes);
 
@@ -2017,7 +2017,7 @@ document.getElementById('btn-confirm-update')?.addEventListener('click', () => {
   const url = updateModal?.dataset.downloadUrl;
   const checksum = updateModal?.dataset.checksum || updateModal?.dataset.sha256 || '';
   const checksumAlgorithm = updateModal?.dataset.checksumAlgorithm || (checksum.length === 128 ? 'sha512' : 'sha256');
-  const version = (document.getElementById('update-modal-version')?.textContent || '1.0.0-alpha.13').replace(/^v/, '');
+  const version = (document.getElementById('update-modal-version')?.textContent || '1.0.0-beta.0').replace(/^v/, '');
 
   if (!url) {
     window.oslo.openExternalLink('https://oslobrowser.com/download');
@@ -2104,7 +2104,7 @@ function autoCheckForUpdates() {
       const modalVersion = document.getElementById('update-modal-version');
       const modalNotes = document.getElementById('update-modal-notes');
 
-      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-alpha.13'}`;
+      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.0'}`;
       if (modalVersion) modalVersion.textContent = `v${info.latestVersion}`;
       if (modalNotes) modalNotes.innerHTML = parseMarkdown(info.releaseNotes);
 
@@ -2128,6 +2128,91 @@ function autoCheckForUpdates() {
 setTimeout(autoCheckForUpdates, 1500);
 
 // --- Telemetry Diagnostics Modal ---
+const TELEMETRY_REPORT_ISSUE_URL = 'https://github.com/OSLO-Team/oslo-browser/issues/new';
+const TELEMETRY_REPORT_URL_LIMIT = 3900;
+const TELEMETRY_REPORT_CLIPBOARD_LIMIT = 30000;
+
+function getTelemetryArray(logs, key) {
+  return Array.isArray(logs?.[key]) ? logs[key] : [];
+}
+
+function truncateTelemetryText(text, maxLength) {
+  const value = String(text || '');
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, Math.max(0, maxLength - 120))}\n\n[Report truncated. Full local log can be copied again from OSLO telemetry diagnostics.]`;
+}
+
+function buildTelemetryReport(logs, systemInfo = {}, options = {}) {
+  const maxEvents = Number.isFinite(options.maxEvents) ? options.maxEvents : 100;
+  const maxCrashes = Number.isFinite(options.maxCrashes) ? options.maxCrashes : 50;
+  const detailLimit = Number.isFinite(options.detailLimit) ? options.detailLimit : TELEMETRY_REPORT_CLIPBOARD_LIMIT;
+  const allEvents = getTelemetryArray(logs, 'events');
+  const allCrashes = getTelemetryArray(logs, 'crashes');
+  const payload = {
+    generatedAt: new Date().toISOString(),
+    appVersion: systemInfo?.appVersion || '1.0.0-beta.0',
+    electron: systemInfo?.electron || '',
+    chrome: systemInfo?.chrome || '',
+    platform: navigator.platform || '',
+    language: state.currentLang || '',
+    eventCount: allEvents.length,
+    crashCount: allCrashes.length,
+    events: allEvents.slice(-maxEvents),
+    crashes: allCrashes.slice(-maxCrashes)
+  };
+
+  return truncateTelemetryText(JSON.stringify(payload, null, 2), detailLimit);
+}
+
+function buildTelemetryIssueBody(logs, systemInfo = {}, copiedToClipboard = false) {
+  const allEvents = getTelemetryArray(logs, 'events');
+  const allCrashes = getTelemetryArray(logs, 'crashes');
+  const compactReport = buildTelemetryReport(logs, systemInfo, {
+    maxEvents: 8,
+    maxCrashes: 3,
+    detailLimit: 1800
+  });
+
+  return [
+    '## OSLO Browser Telemetry Report',
+    '',
+    `Version: ${systemInfo?.appVersion || '1.0.0-beta.0'}`,
+    `Generated at: ${new Date().toISOString()}`,
+    `Events: ${allEvents.length}`,
+    `Crashes/errors: ${allCrashes.length}`,
+    '',
+    copiedToClipboard
+      ? 'A full sanitized telemetry report was copied to the clipboard before this issue opened.'
+      : 'Clipboard copy was unavailable, so only this compact sanitized report is attached.',
+    '',
+    '```json',
+    compactReport,
+    '```'
+  ].join('\n');
+}
+
+function createTelemetryIssueUrl(title, body) {
+  try {
+    const url = new URL(TELEMETRY_REPORT_ISSUE_URL);
+    let issueBody = body;
+
+    while (issueBody.length > 700) {
+      url.searchParams.set('title', title);
+      url.searchParams.set('body', issueBody);
+      const candidate = url.toString();
+      if (candidate.length <= TELEMETRY_REPORT_URL_LIMIT) return candidate;
+      issueBody = `${issueBody.slice(0, Math.max(700, issueBody.length - 500))}\n\n[Report body shortened to fit the GitHub issue URL. Full report may be on the clipboard.]`;
+    }
+
+    url.searchParams.set('title', title);
+    url.searchParams.set('body', issueBody);
+    return url.toString();
+  } catch (error) {
+    console.error('Failed to build telemetry issue URL:', error);
+    return TELEMETRY_REPORT_ISSUE_URL;
+  }
+}
+
 function renderTelemetryLogs() {
   window.oslo.getTelemetryLogs().then(logs => {
     const eventsList = document.getElementById('telemetry-events-list');
@@ -2304,6 +2389,63 @@ document.getElementById('btn-copy-telemetry')?.addEventListener('click', () => {
       }
     });
   });
+});
+
+document.getElementById('btn-report-telemetry')?.addEventListener('click', async () => {
+  const reportBtn = document.getElementById('btn-report-telemetry');
+  const reportSpan = reportBtn?.querySelector('span');
+  const originalText = translations[state.currentLang]['telemetry-report-github'] || 'GitHub\'a Bildir';
+  const readyText = translations[state.currentLang]['telemetry-report-ready'] || 'Rapor Hazır';
+  const failedText = translations[state.currentLang]['telemetry-report-failed'] || 'Açılamadı';
+
+  if (reportBtn) reportBtn.disabled = true;
+
+  try {
+    const [logs, systemInfo] = await Promise.all([
+      window.oslo.getTelemetryLogs(),
+      typeof window.oslo.getSystemInfo === 'function' ? window.oslo.getSystemInfo() : Promise.resolve({})
+    ]);
+
+    let copiedToClipboard = false;
+    const fullReport = buildTelemetryReport(logs, systemInfo, {
+      maxEvents: 100,
+      maxCrashes: 50,
+      detailLimit: TELEMETRY_REPORT_CLIPBOARD_LIMIT
+    });
+
+    try {
+      await navigator.clipboard.writeText(fullReport);
+      copiedToClipboard = true;
+    } catch (clipboardError) {
+      console.warn('Telemetry report clipboard copy failed:', clipboardError);
+    }
+
+    const title = `[Telemetry] OSLO Browser report - ${new Date().toISOString().slice(0, 10)}`;
+    const body = buildTelemetryIssueBody(logs, systemInfo, copiedToClipboard);
+    window.oslo.openExternalLink(createTelemetryIssueUrl(title, body));
+    window.oslo.logTelemetryEvent?.('telemetry_report_github_opened', { copiedToClipboard });
+
+    if (reportSpan) {
+      reportSpan.textContent = readyText;
+      setTimeout(() => {
+        reportSpan.textContent = originalText;
+      }, 1500);
+    }
+  } catch (error) {
+    console.error('Telemetry report action failed:', error);
+    if (reportSpan) {
+      reportSpan.textContent = failedText;
+      setTimeout(() => {
+        reportSpan.textContent = originalText;
+      }, 1500);
+    }
+  } finally {
+    if (reportBtn) {
+      setTimeout(() => {
+        reportBtn.disabled = false;
+      }, 300);
+    }
+  }
 });
 
 // Wire Telemetry Clear Actions

@@ -437,7 +437,7 @@
             </button>
           </div>
           <div class="settings-nav-footer">
-            <span class="settings-nav-version">OSLO v<span id="about-version-display">1.0.0-alpha.13</span></span>
+            <span class="settings-nav-version">OSLO v<span id="about-version-display">1.0.0-beta.0</span></span>
           </div>
         </nav>
 
@@ -838,8 +838,8 @@
               <div class="settings-card-title" data-i18n="telemetry-logs-title">Telemetri ve Hata Raporları</div>
               <div class="settings-card-row">
                 <div class="settings-card-info">
-                  <span class="settings-card-label" data-i18n="telemetry-desc">Tanılama verilerini yalnızca yerel olarak
-                    kaydeder ve isteğe bağlı raporlar.</span>
+                  <span class="settings-card-label" data-i18n="telemetry-desc">Tanılama verileri yerelde tutulur;
+                    GitHub'a Bildir ile kullanıcı onaylı rapor açılır.</span>
                 </div>
                 <label class="switch"><input type="checkbox" id="settings-telemetry-checkbox"><span
                     class="slider"></span></label>
@@ -1183,7 +1183,7 @@
                 <img src="../../assets/logo.svg" width="48" height="48" alt="OSLO" class="settings-logo-spin">
                 <div class="settings-about-info">
                   <span class="settings-about-name">OSLO Browser</span>
-                  <span class="settings-about-ver">v<span id="about-version-display-main">1.0.0-alpha.13</span></span>
+                  <span class="settings-about-ver">v<span id="about-version-display-main">1.0.0-beta.0</span></span>
                 </div>
               </div>
               <div id="update-status-message" class="settings-update-msg" style="display: none;"></div>
@@ -1428,7 +1428,7 @@
         <div class="update-version-flow">
           <div class="version-chip current">
             <span class="version-label">Mevcut</span>
-            <span class="version-number" id="update-current-version">v1.0.0-alpha.13</span>
+            <span class="version-number" id="update-current-version">v1.0.0-beta.0</span>
           </div>
           <div class="version-arrow">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
@@ -1437,7 +1437,7 @@
           </div>
           <div class="version-chip latest">
             <span class="version-label">Yeni</span>
-            <span class="version-number" id="update-modal-version">v1.0.0-alpha.13</span>
+            <span class="version-number" id="update-modal-version">v1.0.0-beta.0</span>
           </div>
         </div>
 
@@ -1489,7 +1489,7 @@
         <!-- Sleek Glass Tab Selector -->
         <div class="telemetry-tabs">
           <button id="telemetry-tab-events" class="telemetry-tab-btn active" data-tab="events"
-            data-i18n="telemetry-events">Olaylar (Son 20)</button>
+            data-i18n="telemetry-events">Olaylar (Son 100)</button>
           <button id="telemetry-tab-crashes" class="telemetry-tab-btn" data-tab="crashes"
             data-i18n="telemetry-crashes">Kilitlenmeler ve Hatalar</button>
         </div>
@@ -1512,6 +1512,14 @@
               d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
           </svg>
           <span data-i18n="telemetry-copy">Kopyala</span>
+        </button>
+        <button id="btn-report-telemetry" class="modal-btn primary-btn"
+          style="display: flex; align-items: center; gap: 6px;">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+            <path
+              d="M12 2C6.48 2 2 6.58 2 12.26c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.5 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.38-3.37-1.38-.45-1.19-1.11-1.5-1.11-1.5-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.31.1-2.72 0 0 .84-.28 2.75 1.05A9.35 9.35 0 0 1 12 6.92c.85 0 1.71.12 2.51.35 1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.46.1 2.72.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.8-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .28.18.61.69.5A10.08 10.08 0 0 0 22 12.26C22 6.58 17.52 2 12 2z" />
+          </svg>
+          <span data-i18n="telemetry-report-github">GitHub'a Bildir</span>
         </button>
         <button id="btn-clear-telemetry" class="modal-btn"
           style="background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); color: #fff; border: none; display: flex; align-items: center; gap: 6px;">

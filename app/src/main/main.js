@@ -106,6 +106,12 @@ const passwordsStore = new Store('passwords', { passwords: [] });
 const certificateExceptionsStore = new Store('certificate-exceptions', { exceptions: {} });
 const passwordBreachCacheStore = new Store('password-breach-cache', { cache: {} });
 const PASSWORD_ENCODING = 'safeStorage:v1';
+const TELEMETRY_MAX_EVENTS = 100;
+const TELEMETRY_MAX_CRASHES = 50;
+const TELEMETRY_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const TELEMETRY_MAX_DATA_BYTES = 8192;
+const TELEMETRY_MAX_STRING_LENGTH = 600;
+const TELEMETRY_MAX_STACK_LENGTH = 8000;
 
 const MAIN_TEXT = {
   tr: {
@@ -180,6 +186,130 @@ function getAppLanguage() {
 
 function appText(key, lang = getAppLanguage()) {
   return MAIN_TEXT[lang]?.[key] || MAIN_TEXT.en[key] || MAIN_TEXT.tr[key] || key;
+}
+
+function normalizeTelemetryAction(action) {
+  return String(action || 'unknown-event')
+    .replace(/[^\w:.-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'unknown-event';
+}
+
+function sanitizeTelemetryUrl(value) {
+  try {
+    const parsed = new URL(String(value || ''));
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.origin;
+    }
+    if (parsed.protocol === 'file:') return '[local-file]';
+    return parsed.protocol ? `[${parsed.protocol.replace(':', '')}-url]` : '[redacted-url]';
+  } catch (error) {
+    return '[redacted-url]';
+  }
+}
+
+function scrubSensitiveText(value, maxLength = TELEMETRY_MAX_STRING_LENGTH) {
+  return String(value || '')
+    .replace(/\bhttps?:\/\/[^\s"'<>]+/gi, match => sanitizeTelemetryUrl(match))
+    .replace(/file:\/\/\/[^\s"'<>]+/gi, '[local-file]')
+    .replace(/[A-Za-z]:\\[^\s)"'<>]+/g, '[local-path]')
+    .replace(/[?&](token|access_token|refresh_token|auth|key|password|secret|code|session|sid)=([^&\s]+)/gi, '$1=[redacted]')
+    .slice(0, maxLength);
+}
+
+function sanitizeTelemetryValue(value, key = '', depth = 0) {
+  const normalizedKey = String(key || '').toLowerCase();
+  if (value === null || value === undefined) return value;
+  if (typeof value === 'boolean' || typeof value === 'number') return value;
+
+  if (/url|uri|href|link/.test(normalizedKey)) {
+    return sanitizeTelemetryUrl(value);
+  }
+  if (/title|query|search|token|password|secret|authorization|cookie|email|username|space/.test(normalizedKey)) {
+    return '[redacted]';
+  }
+  if (typeof value === 'string') {
+    return scrubSensitiveText(value);
+  }
+  if (Array.isArray(value)) {
+    if (depth >= 4) return '[truncated]';
+    return value.slice(0, 20).map(item => sanitizeTelemetryValue(item, key, depth + 1));
+  }
+  if (typeof value === 'object') {
+    if (depth >= 4) return '[truncated]';
+    const sanitized = {};
+    Object.entries(value).slice(0, 40).forEach(([entryKey, entryValue]) => {
+      sanitized[entryKey] = sanitizeTelemetryValue(entryValue, entryKey, depth + 1);
+    });
+    return limitTelemetryData(sanitized);
+  }
+  return scrubSensitiveText(value);
+}
+
+function limitTelemetryData(value) {
+  try {
+    const bytes = Buffer.byteLength(JSON.stringify(value), 'utf8');
+    if (bytes <= TELEMETRY_MAX_DATA_BYTES) return value;
+    return {
+      truncated: true,
+      originalBytes: bytes,
+      reason: 'Telemetry data exceeded local size limit.'
+    };
+  } catch (error) {
+    return { truncated: true, reason: 'Telemetry data could not be serialized.' };
+  }
+}
+
+function pruneTelemetryEntries(entries, maxEntries) {
+  const cutoff = Date.now() - TELEMETRY_MAX_AGE_MS;
+  return (Array.isArray(entries) ? entries : [])
+    .filter(entry => {
+      const timestamp = Number(entry?.timestamp);
+      return Number.isFinite(timestamp) && timestamp >= cutoff;
+    })
+    .slice(-maxEntries);
+}
+
+function getTelemetryLogsSnapshot({ writeBack = false } = {}) {
+  const events = pruneTelemetryEntries(telemetryStore.get('events') || [], TELEMETRY_MAX_EVENTS);
+  const crashes = pruneTelemetryEntries(telemetryStore.get('crashes') || [], TELEMETRY_MAX_CRASHES);
+  if (writeBack) {
+    telemetryStore.set('events', events);
+    telemetryStore.set('crashes', crashes);
+  }
+  return { events, crashes };
+}
+
+function clearTelemetryLogs() {
+  telemetryStore.replace({ events: [], crashes: [] });
+}
+
+function storeTelemetryEvent(action, data) {
+  if (!settingsStore.get('telemetryEnabled')) return;
+  const logs = getTelemetryLogsSnapshot();
+  logs.events.push({
+    timestamp: Date.now(),
+    action: normalizeTelemetryAction(action),
+    data: sanitizeTelemetryValue(data || {})
+  });
+  telemetryStore.set('events', pruneTelemetryEntries(logs.events, TELEMETRY_MAX_EVENTS));
+}
+
+function storeTelemetryCrash(processName, message, stack = '', details = undefined) {
+  if (!settingsStore.get('telemetryEnabled')) return;
+  const logs = getTelemetryLogsSnapshot();
+  logs.crashes.push({
+    timestamp: Date.now(),
+    message: scrubSensitiveText(message || 'Unknown error', TELEMETRY_MAX_STRING_LENGTH),
+    stack: scrubSensitiveText(stack || '', TELEMETRY_MAX_STACK_LENGTH),
+    process: String(processName || 'unknown').slice(0, 40),
+    details: details === undefined ? undefined : sanitizeTelemetryValue(details)
+  });
+  telemetryStore.set('crashes', pruneTelemetryEntries(logs.crashes, TELEMETRY_MAX_CRASHES));
+}
+
+if (!settingsStore.get('telemetryEnabled')) {
+  clearTelemetryLogs();
 }
 
 function isPasswordEncryptionAvailable() {
@@ -331,32 +461,43 @@ if (settingsStore.get('permissionAutoplay') === 'block') {
 // Uncaught exceptions crash logging
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception in Main Process:', error);
-  if (settingsStore.get('telemetryEnabled')) {
-    const crashes = telemetryStore.get('crashes') || [];
-    crashes.push({
-      timestamp: Date.now(),
-      message: error.message || String(error),
-      stack: error.stack || '',
-      process: 'main'
-    });
-    if (crashes.length > 50) crashes.splice(0, crashes.length - 50);
-    telemetryStore.set('crashes', crashes);
-  }
+  storeTelemetryCrash('main', error.message || String(error), error.stack || '');
 });
 
 process.on('unhandledRejection', (reason) => {
   console.error('Unhandled Rejection in Main Process:', reason);
-  if (settingsStore.get('telemetryEnabled')) {
-    const crashes = telemetryStore.get('crashes') || [];
-    crashes.push({
-      timestamp: Date.now(),
-      message: reason ? (reason.message || String(reason)) : 'Unhandled Rejection',
-      stack: reason ? (reason.stack || '') : '',
-      process: 'main'
-    });
-    if (crashes.length > 50) crashes.splice(0, crashes.length - 50);
-    telemetryStore.set('crashes', crashes);
-  }
+  storeTelemetryCrash(
+    'main',
+    reason ? (reason.message || String(reason)) : 'Unhandled Rejection',
+    reason ? (reason.stack || '') : ''
+  );
+});
+
+app.on('render-process-gone', (event, webContents, details) => {
+  storeTelemetryCrash(
+    'renderer',
+    `Renderer process gone: ${details?.reason || 'unknown'}`,
+    '',
+    {
+      reason: details?.reason,
+      exitCode: details?.exitCode,
+      url: webContents?.getURL?.()
+    }
+  );
+});
+
+app.on('child-process-gone', (event, details) => {
+  storeTelemetryCrash(
+    details?.type || 'child',
+    `Child process gone: ${details?.reason || 'unknown'}`,
+    '',
+    {
+      type: details?.type,
+      reason: details?.reason,
+      exitCode: details?.exitCode,
+      name: details?.name
+    }
+  );
 });
 
 let windows = new Set();
@@ -3184,47 +3325,27 @@ ipcMain.handle('clear-browser-data', async (event) => {
   }
 });
 
-ipcMain.on('telemetry-log-event', (event, { action, data }) => {
+ipcMain.on('telemetry-log-event', (event, payload = {}) => {
   if (ignoreUntrustedMainUiSender(event, 'telemetry-log-event')) return;
-  if (settingsStore.get('telemetryEnabled')) {
-    const events = telemetryStore.get('events') || [];
-    events.push({
-      timestamp: Date.now(),
-      action,
-      data
-    });
-    if (events.length > 100) events.splice(0, events.length - 100);
-    telemetryStore.set('events', events);
-  }
+  const { action, data } = payload || {};
+  storeTelemetryEvent(action, data);
 });
 
 ipcMain.on('telemetry-log-crash', (event, error) => {
   if (ignoreUntrustedMainUiSender(event, 'telemetry-log-crash')) return;
-  if (settingsStore.get('telemetryEnabled') && error) {
-    const crashes = telemetryStore.get('crashes') || [];
-    crashes.push({
-      timestamp: Date.now(),
-      message: error.message || String(error),
-      stack: error.stack || '',
-      process: 'renderer'
-    });
-    if (crashes.length > 50) crashes.splice(0, crashes.length - 50);
-    telemetryStore.set('crashes', crashes);
+  if (error) {
+    storeTelemetryCrash('renderer', error.message || String(error), error.stack || '');
   }
 });
 
 ipcMain.handle('telemetry-get-logs', (event) => {
   assertMainUiSender(event);
-  return {
-    events: telemetryStore.get('events') || [],
-    crashes: telemetryStore.get('crashes') || []
-  };
+  return getTelemetryLogsSnapshot({ writeBack: true });
 });
 
 ipcMain.handle('telemetry-clear-logs', (event) => {
   assertMainUiSender(event);
-  telemetryStore.set('events', []);
-  telemetryStore.set('crashes', []);
+  clearTelemetryLogs();
   return { success: true };
 });
 
@@ -3457,6 +3578,8 @@ function applySetting(key, value) {
     }
   } else if (key === 'customCssEnabled') {
     applyCustomCssToOpenTabs(value ? (settingsStore.get('customCss') || '') : '');
+  } else if (key === 'telemetryEnabled') {
+    if (!value) clearTelemetryLogs();
   } else if (key === 'defaultPageZoom') {
     const zoom = parseFloat(value) || 1.0;
     Object.values(tabs).forEach(tab => {
@@ -4133,24 +4256,14 @@ function optimizePerformanceForHardware() {
     settingsStore.set('reduceMotion', true);
     settingsStore.set('transparencyEnabled', false);
 
-    // Log telemetry event if enabled
-    if (settingsStore.get('telemetryEnabled')) {
-      try {
-        const events = telemetryStore.get('events') || [];
-        events.push({
-          timestamp: Date.now(),
-          action: 'hardware-optimize',
-          data: {
-            ramGB: totalMemoryGB,
-            cores: cpuCores,
-            message: 'Performance settings optimized for low-end hardware.'
-          }
-        });
-        if (events.length > 50) events.splice(0, events.length - 50);
-        telemetryStore.set('events', events);
-      } catch (e) {
-        console.error('Failed to log hardware optimization telemetry event:', e);
-      }
+    try {
+      storeTelemetryEvent('hardware-optimize', {
+        ramGB: totalMemoryGB,
+        cores: cpuCores,
+        message: 'Performance settings optimized for low-end hardware.'
+      });
+    } catch (e) {
+      console.error('Failed to log hardware optimization telemetry event:', e);
     }
   }
 
