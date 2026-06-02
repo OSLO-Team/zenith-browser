@@ -286,7 +286,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       greetKey = 'greeting-night';
     }
-    
+
     // Check if newtabTranslations is already defined (it is defined below in the file scope)
     const translationsReady = typeof newtabTranslations !== 'undefined';
     const greet = translationsReady ? newtabTranslations[activeLang][greetKey] : 'Merhaba';
@@ -349,7 +349,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`;
-    
+
     fetch(url)
       .then(res => res.json())
       .then(data => {
@@ -373,7 +373,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function mapWeatherCode(code) {
     const translationsReady = typeof newtabTranslations !== 'undefined';
     if (!translationsReady) return 'Bulutlu';
-    switch(code) {
+    switch (code) {
       case 0: return newtabTranslations[activeLang]['weather-sunny'];
       case 1:
       case 2:
@@ -439,11 +439,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- Search Redirection ---
   function formatSearch(val, engine) {
     const query = val.trim();
-    
+
     if (query.startsWith('http://') || query.startsWith('https://') || query.startsWith('file://')) {
       return query;
     }
-    
+
     const domainPattern = /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(:\d+)?(\/\S*)?$/;
     if (domainPattern.test(query)) {
       return 'https://' + query;
@@ -487,16 +487,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function applyLanguage() {
     activeLang = activeSettings.language || 'tr';
-    
+
     document.title = newtabTranslations[activeLang]['new-tab'];
-    
+
     // Update elements
     const sectionTitle = document.querySelector('.shortcuts-section .section-title');
     if (sectionTitle) sectionTitle.textContent = newtabTranslations[activeLang]['quick-links'];
-    
+
     if (editShortcutsBtn) {
-      editShortcutsBtn.textContent = editModeActive 
-        ? newtabTranslations[activeLang]['edit-btn-active'] 
+      editShortcutsBtn.textContent = editModeActive
+        ? newtabTranslations[activeLang]['edit-btn-active']
         : newtabTranslations[activeLang]['edit-btn-default'];
       editShortcutsBtn.title = newtabTranslations[activeLang]['edit-btn-title'];
     }
@@ -508,10 +508,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Modal labels
     const nameLabel = document.querySelector('label[for="modal-name-input"]');
     if (nameLabel) nameLabel.textContent = newtabTranslations[activeLang]['modal-name'];
-    
+
     const urlLabel = document.querySelector('label[for="modal-url-input"]');
     if (urlLabel) urlLabel.textContent = newtabTranslations[activeLang]['modal-url'];
-    
+
     if (modalCancelBtn) modalCancelBtn.textContent = newtabTranslations[activeLang]['modal-cancel'];
     if (modalSaveBtn) modalSaveBtn.textContent = newtabTranslations[activeLang]['modal-save'];
 
@@ -529,7 +529,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Update greeting
     updateTime();
-    
+
     // Rerender shortcuts to translate labels & buttons
     renderShortcutsGrid();
   }
@@ -885,7 +885,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderShortcutsGrid() {
     shortcutsGrid.innerHTML = '';
-    
+
     shortcuts.forEach((rawItem, index) => {
       const item = normalizeShortcut(rawItem);
       if (!item) return;
@@ -896,17 +896,17 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (e) {
         domain = '';
       }
-      
+
       const faviconUrl = `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(domain)}`;
       const delTitle = newtabTranslations[activeLang]['delete'];
       const editTitle = newtabTranslations[activeLang]['edit'];
       const fallbackLetter = item.name.trim().charAt(0).toUpperCase() || '?';
-      
+
       const card = document.createElement('a');
       card.href = item.url;
       card.className = 'shortcut-card';
       card.dataset.index = index;
-      
+
       card.innerHTML = `
         <div class="shortcut-icon" style="background-color: rgba(255, 255, 255, 0.05); color: #fff;">
           <img src="${escapeAttribute(faviconUrl)}" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" style="width: 24px; height: 24px; object-fit: contain;">
@@ -998,7 +998,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   modalCancelBtn.addEventListener('click', closeModal);
-  
+
   shortcutModal.addEventListener('click', (e) => {
     if (e.target === shortcutModal) {
       closeModal();

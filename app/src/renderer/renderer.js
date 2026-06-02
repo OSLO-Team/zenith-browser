@@ -84,6 +84,7 @@ const navBack = document.getElementById('nav-back');
 const navForward = document.getElementById('nav-forward');
 const navReload = document.getElementById('nav-reload');
 const addressInput = document.getElementById('address-input');
+const readerModeBtn = createReaderModeButton();
 
 const clearHistoryModal = document.getElementById('clear-history-modal');
 const bookmarkEditModal = document.getElementById('bookmark-edit-modal');
@@ -91,6 +92,10 @@ const bookmarkEditName = document.getElementById('bookmark-edit-name');
 const bookmarkEditUrl = document.getElementById('bookmark-edit-url');
 const tabContextMenu = document.getElementById('tab-context-menu');
 let contentPreviewClearTimer = null;
+
+function getUiText(key, fallback) {
+  return translations[state.currentLang]?.[key] || translations.tr?.[key] || fallback;
+}
 
 async function captureContentPreview() {
   const contentArea = document.getElementById('content-area');
@@ -153,6 +158,92 @@ window.osloContentPreview = {
   clearSoon: clearContentPreviewSoon,
   refreshBounds: sendBounds
 };
+
+function createReaderModeButton() {
+  const actions = document.querySelector('.address-bar-actions');
+  if (!actions) return null;
+
+  const existing = document.getElementById('reader-mode-btn');
+  if (existing) return existing;
+
+  const button = document.createElement('button');
+  button.id = 'reader-mode-btn';
+  button.className = 'address-action-btn reader-mode-btn';
+  button.type = 'button';
+  button.title = `${getUiText('reader-mode-title', 'Okuma Modu')} (Ctrl+Shift+R)`;
+  button.disabled = true;
+  button.style.visibility = 'hidden';
+  button.innerHTML = `
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path d="M5 4.5C5 3.67 5.67 3 6.5 3H20v16.5c0 .28-.22.5-.5.5H6.75C5.23 20 4 18.77 4 17.25V5.5c0-.55.45-1 1-1zm1.5.5a.5.5 0 0 0-.5.5v10.94c.28-.12.58-.19.9-.19H18V5H6.5zM6.9 18.5H18v-1H6.9a.5.5 0 0 0 0 1zM8 7h8v1.5H8V7zm0 3h8v1.5H8V10zm0 3h5v1.5H8V13z" fill="currentColor"/>
+    </svg>
+  `;
+
+  const bookmarkButton = document.getElementById('add-bookmark-btn');
+  actions.insertBefore(button, bookmarkButton || null);
+  return button;
+}
+
+function isReaderPageUrl(url) {
+  return /\/reader\/reader\.html(?:\?|$)/i.test(String(url || '').replace(/\\/g, '/'));
+}
+
+function canUseReaderMode(tab) {
+  if (!tab || !tab.url || isReaderPageUrl(tab.url)) return false;
+  try {
+    const parsed = new URL(tab.url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch (error) {
+    return false;
+  }
+}
+
+function updateReaderModeButton() {
+  if (!readerModeBtn) return;
+  const activeTab = state.tabs[state.activeTabId];
+  const isReader = !!activeTab && isReaderPageUrl(activeTab.url);
+  const enabled = canUseReaderMode(activeTab);
+
+  if (!enabled) {
+    readerModeBtn.style.visibility = 'hidden';
+    readerModeBtn.disabled = true;
+    readerModeBtn.classList.remove('active');
+    readerModeBtn.title = isReader
+      ? getUiText('reader-mode-active', 'Okuma Modu Açık')
+      : getUiText('reader-mode-unavailable', 'Okuma Modu bu sayfada kullanılamaz');
+    return;
+  }
+
+  readerModeBtn.style.visibility = 'visible';
+  readerModeBtn.disabled = !enabled;
+  readerModeBtn.classList.toggle('active', isReader);
+  readerModeBtn.title = isReader
+    ? getUiText('reader-mode-active', 'Okuma Modu Açık')
+    : (enabled
+      ? `${getUiText('reader-mode-title', 'Okuma Modu')} (Ctrl+Shift+R)`
+      : getUiText('reader-mode-unavailable', 'Okuma Modu bu sayfada kullanılamaz'));
+}
+
+async function openReaderModeFromActiveTab() {
+  const activeTab = state.tabs[state.activeTabId];
+  if (!activeTab || !canUseReaderMode(activeTab) || !readerModeBtn) return;
+
+  readerModeBtn.classList.add('busy');
+  readerModeBtn.disabled = true;
+  try {
+    await window.oslo.openReaderMode(activeTab.id);
+    window.oslo.logTelemetryEvent('reader-mode-open', { url: activeTab.url });
+  } catch (error) {
+    console.error('Reader mode failed:', error);
+    readerModeBtn.title = getUiText('reader-mode-error', 'Okuma modu açılamadı');
+  } finally {
+    readerModeBtn.classList.remove('busy');
+    updateReaderModeButton();
+  }
+}
+
+readerModeBtn?.addEventListener('click', openReaderModeFromActiveTab);
+window.addEventListener('language-changed', updateReaderModeButton);
 
 // --- Window Resizing and Bounds Coordination ---
 export function sendBounds() {
@@ -587,6 +678,7 @@ window.oslo.onTabCreated((tab) => {
 
   renderTabs();
   updateBookmarkIcon();
+  updateReaderModeButton();
   setTimeout(sendBounds, 100);
   window.oslo.logTelemetryEvent('tab-create', { isIncognito: tab.isIncognito, space: tab.space });
 });
@@ -608,6 +700,7 @@ window.oslo.onTabUpdated((tabUpdate) => {
         }
         updateBookmarkIcon();
         updateSecurityIndicator();
+        updateReaderModeButton();
 
         // Auto-dismiss permission bar on navigation
         const permBar = document.getElementById('permission-bar');
@@ -620,6 +713,7 @@ window.oslo.onTabUpdated((tabUpdate) => {
       }
       updateNavButtonsState();
       updateSplitUI();
+      updateReaderModeButton();
     }
 
     renderTabs();
@@ -668,6 +762,7 @@ window.oslo.onTabSelected((tabId) => {
     updateNavButtonsState();
     updateZoomUI();
     updateSplitUI();
+    updateReaderModeButton();
     renderSpaces();
 
     // Auto-dismiss permission bar when switching tabs
@@ -816,6 +911,9 @@ window.oslo.onHotkey((hotkeyType) => {
       break;
     case 'findinpage':
       showFindBar();
+      break;
+    case 'reader':
+      openReaderModeFromActiveTab();
       break;
   }
 });
@@ -976,6 +1074,13 @@ function getSmartCommands() {
       url: 'Ctrl+Shift+P',
       keywords: ['gizli', 'incognito', 'private'],
       run: () => window.oslo.createTab({ isIncognito: true, space: state.activeSpace })
+    },
+    {
+      id: 'reader-mode',
+      title: t['cmd-reader-mode'] || 'Okuma modunu aç',
+      url: 'Ctrl+Shift+R',
+      keywords: ['okuma', 'reader', 'read', 'article', 'makale'],
+      run: openReaderModeFromActiveTab
     }
   ];
 }
@@ -1869,7 +1974,7 @@ document.getElementById('btn-check-updates')?.addEventListener('click', () => {
       const modalVersion = document.getElementById('update-modal-version');
       const modalNotes = document.getElementById('update-modal-notes');
 
-      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-alpha.11'}`;
+      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-alpha.13'}`;
       if (modalVersion) modalVersion.textContent = `v${info.latestVersion}`;
       if (modalNotes) modalNotes.innerHTML = parseMarkdown(info.releaseNotes);
 
@@ -1912,7 +2017,7 @@ document.getElementById('btn-confirm-update')?.addEventListener('click', () => {
   const url = updateModal?.dataset.downloadUrl;
   const checksum = updateModal?.dataset.checksum || updateModal?.dataset.sha256 || '';
   const checksumAlgorithm = updateModal?.dataset.checksumAlgorithm || (checksum.length === 128 ? 'sha512' : 'sha256');
-  const version = (document.getElementById('update-modal-version')?.textContent || '1.0.0-alpha.11').replace(/^v/, '');
+  const version = (document.getElementById('update-modal-version')?.textContent || '1.0.0-alpha.13').replace(/^v/, '');
 
   if (!url) {
     window.oslo.openExternalLink('https://oslobrowser.com/download');
@@ -1999,7 +2104,7 @@ function autoCheckForUpdates() {
       const modalVersion = document.getElementById('update-modal-version');
       const modalNotes = document.getElementById('update-modal-notes');
 
-      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-alpha.11'}`;
+      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-alpha.13'}`;
       if (modalVersion) modalVersion.textContent = `v${info.latestVersion}`;
       if (modalNotes) modalNotes.innerHTML = parseMarkdown(info.releaseNotes);
 
@@ -2662,6 +2767,11 @@ if (spaceDeleteModal) {
 // Global shortcut for Split Screen (Ctrl + \)
 window.addEventListener('keydown', (e) => {
   const isControl = navigator.platform.includes('Mac') ? e.metaKey : e.ctrlKey;
+  if (isControl && e.shiftKey && e.key.toLowerCase() === 'r') {
+    e.preventDefault();
+    openReaderModeFromActiveTab();
+    return;
+  }
   if (isControl && e.key === '\\') {
     e.preventDefault();
     if (state.activeTabId) {

@@ -711,6 +711,34 @@ body.topbar-auto-hide:has(.bookmarks-bar:focus-within) #top-bar::before {
   color: #eab308; /* yellow star */
 }
 
+.address-action-btn.reader-mode-btn {
+  position: relative;
+}
+
+.address-action-btn.reader-mode-btn.active {
+  color: var(--accent-color);
+  background-color: var(--accent-soft);
+}
+
+.address-action-btn.reader-mode-btn:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.address-action-btn.reader-mode-btn.busy::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border: 1px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 999px;
+  animation: readerSpin 0.7s linear infinite;
+}
+
+@keyframes readerSpin {
+  to { transform: rotate(360deg); }
+}
+
 /* Content Area Placeholder */
 #content-area {
   flex: 1;

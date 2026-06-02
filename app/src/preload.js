@@ -65,7 +65,7 @@ try {
       webFrame.executeJavaScript(scriptContent);
     }
   }
-} catch (e) {}
+} catch (e) { }
 
 // ─── COSMETIC FILTER CSS ────────────────────────────────────────────────────────
 const cosmeticFilterCSS = `
@@ -431,7 +431,7 @@ function runGenericAdBlocker() {
       document.querySelectorAll('iframe').forEach(iframe => {
         try {
           const src = (iframe.src || '').toLowerCase();
-          
+
           // Safeguard: Never delete iframes belonging to popular video hosting/player providers
           const isVideoProvider = src.includes('youtube.com') || src.includes('youtu.be') ||
             src.includes('vimeo.com') || src.includes('dailymotion.com') ||
@@ -439,7 +439,7 @@ function runGenericAdBlocker() {
             src.includes('mixdrop') || src.includes('upstream') ||
             src.includes('fembed') || src.includes('ok.ru') ||
             src.includes('vk.com') || src.includes('mail.ru');
-            
+
           if (!isVideoProvider && (
             src.includes('doubleclick.net') || src.includes('googlesyndication.com') ||
             src.includes('googleadservices.com') || src.includes('adnxs.com') ||
@@ -480,9 +480,9 @@ function runGenericVideoAdSkipper() {
         // 1. Check if the video URL indicates an ad
         const src = (video.src || '').toLowerCase();
         let isAd = false;
-        
+
         const adKeywords = ['/ad/', '/ads/', 'preroll', 'pre-roll', 'midroll', 'postroll', 'vast', 'vpaid', 'videoad', 'video_ad', 'advertisement', 'ad_video', 'ad-video'];
-        
+
         if (adKeywords.some(kw => src.includes(kw))) {
           isAd = true;
         }
@@ -521,14 +521,14 @@ function runGenericVideoAdSkipper() {
             const id = (parent.id || '');
             const classAndId = (typeof className === 'string' ? className : '') + ' ' + (typeof id === 'string' ? id : '');
             const lowerClassAndId = classAndId.toLowerCase();
-            
-            if (lowerClassAndId.includes('ad-playing') || 
-                lowerClassAndId.includes('ad-showing') || 
-                lowerClassAndId.includes('vast-ad') || 
-                lowerClassAndId.includes('video-ad') ||
-                lowerClassAndId.includes('fluid-ad') ||
-                lowerClassAndId.includes('jw-ad') ||
-                lowerClassAndId.includes('ima-ad')) {
+
+            if (lowerClassAndId.includes('ad-playing') ||
+              lowerClassAndId.includes('ad-showing') ||
+              lowerClassAndId.includes('vast-ad') ||
+              lowerClassAndId.includes('video-ad') ||
+              lowerClassAndId.includes('fluid-ad') ||
+              lowerClassAndId.includes('jw-ad') ||
+              lowerClassAndId.includes('ima-ad')) {
               isAd = true;
               break;
             }
@@ -549,7 +549,7 @@ function runGenericVideoAdSkipper() {
               video.currentTime = duration - 0.1;
               video.playbackRate = 16;
               if (video.paused) {
-                video.play().catch(() => {});
+                video.play().catch(() => { });
               }
             }
           }
@@ -568,7 +568,7 @@ function runGenericVideoAdSkipper() {
           if (matchesExact || matchesSub) {
             btn.click();
           }
-        } catch (e) {}
+        } catch (e) { }
       });
 
       // 5. Remove overlay banner ads inside video player containers
@@ -576,7 +576,7 @@ function runGenericVideoAdSkipper() {
         '.video-ad-overlay, .vast-blocker, .ad-overlay, .jw-preview, .jw-ad-ui, .fluid_ad_countdown, .fluid_video_wrapper_ad'
       ).forEach(el => el.remove());
 
-    } catch (e) {}
+    } catch (e) { }
   }
 
   // Run periodically
@@ -1004,6 +1004,7 @@ function getLocalPageKind() {
     const pathname = decodeURIComponent(window.location.pathname).replace(/\\/g, '/').toLowerCase();
     if (pathname.endsWith('/renderer/index.html')) return 'app';
     if (pathname.endsWith('/newtab/newtab.html')) return 'newtab';
+    if (pathname.endsWith('/reader/reader.html')) return 'reader';
   } catch (error) { }
   return 'web';
 }
@@ -1129,10 +1130,15 @@ const osloApi = {
   getHistory: () => ipcRenderer.invoke('history-get'),
   clearHistory: (range) => ipcRenderer.invoke('history-clear', range),
   sleepTab: (tabId) => safeSend('tab-sleep', asTabId, tabId),
+  openReaderMode: (tabId) => {
+    if (asTabId(tabId)) return ipcRenderer.invoke('reader-mode-open', tabId);
+    return Promise.reject(new Error('Invalid tab id.'));
+  },
+  getReaderArticle: (articleId) => safeInvoke('reader-article-get', (value) => !!asString(value, 128), articleId),
 
   // Unified Settings API
   getAllSettings: () => ipcRenderer.invoke('settings-get-all'),
-  setSetting: (key, value) => safeInvoke('settings-set', (payload) => allowedSettings.has(payload.key), { key, value }),
+  setSetting: (key, value) => safeInvoke('settings-set', (payload) => payload && allowedSettings.has(payload.key), { key, value }),
   selectNewtabWallpaperFile: () => ipcRenderer.invoke('newtab-wallpaper-select-file'),
   exportSettings: () => ipcRenderer.invoke('settings-export'),
   importSettings: () => ipcRenderer.invoke('settings-import'),
@@ -1147,7 +1153,7 @@ const osloApi = {
   broadcastSetting: (type, value) => {
     const keyMap = { 'wallpaper': 'newtabWallpaper', 'newtab-wallpaper': 'newtabWallpaper' };
     const key = keyMap[type] || type;
-    return safeInvoke('settings-set', (payload) => allowedSettings.has(payload.key), { key, value });
+    return safeInvoke('settings-set', (payload) => payload && allowedSettings.has(payload.key), { key, value });
   },
   onSettingBroadcast: (callback) => {
     const listener = (event, data) => {
@@ -1268,6 +1274,7 @@ const osloApi = {
     ipcRenderer.on('ui-hotkey-togglebookmarks', () => callback('togglebookmarks'));
     ipcRenderer.on('ui-hotkey-togglehistory', () => callback('togglehistory'));
     ipcRenderer.on('ui-hotkey-findinpage', () => callback('findinpage'));
+    ipcRenderer.on('ui-hotkey-reader', () => callback('reader'));
   },
 
   // Permission APIs
@@ -1373,7 +1380,14 @@ if (pageKind === 'app') {
   contextBridge.exposeInMainWorld('oslo', {
     getAllSettings: osloApi.getAllSettings,
     getSearchEngine: osloApi.getSearchEngine,
+    getBookmarks: osloApi.getBookmarks,
+    getHistory: osloApi.getHistory,
     onSettingsUpdated: osloApi.onSettingsUpdated,
     onSettingBroadcast: osloApi.onSettingBroadcast
+  });
+} else if (pageKind === 'reader') {
+  contextBridge.exposeInMainWorld('oslo', {
+    getReaderArticle: osloApi.getReaderArticle,
+    getAllSettings: osloApi.getAllSettings
   });
 }

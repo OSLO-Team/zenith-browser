@@ -1,6 +1,6 @@
 {
   "name": "oslo-browser",
-  "version": "1.0.0-alpha.11",
+  "version": "1.0.0-alpha.13",
   "description": "OSLO Browser - Elegant Electron-based Custom Web Browser",
   "main": "src/main/main.js",
   "scripts": {
@@ -17,8 +17,8 @@
   "build": {
     "appId": "com.oslo.browser",
     "productName": "OSLO Browser",
-    "buildVersion": "1.0.0-alpha.11",
-    "buildNumber": "11",
+    "buildVersion": "1.0.0-alpha.13",
+    "buildNumber": "13",
     "directories": {
       "output": "dist"
     },
@@ -37,7 +37,7 @@
         }
       ],
       "icon": "assets/logo.png",
-      "forceCodeSigning": true,
+      "forceCodeSigning": false,
       "publish": [
         {
           "provider": "github",

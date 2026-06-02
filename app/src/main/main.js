@@ -10,6 +10,10 @@ const GITHUB_REPO = 'OSLO-Team/oslo-browser'; // Format: 'owner/repo'
 const EXPECTED_UPDATE_PUBLISHERS = ['OSLO Browser', 'oslobrowser.com', 'Emir Can Turan'];
 const REQUIRE_SIGNED_UPDATES = process.env.OSLO_REQUIRE_SIGNED_UPDATES === '1';
 const UPDATE_STATE_FILE = 'pending-update.json';
+const READER_PAGE_PATH = path.join(__dirname, '../reader/reader.html');
+const READER_PAGE_URL_PREFIX = pathToFileURL(READER_PAGE_PATH).toString().toLowerCase();
+const READER_ARTICLE_TTL_MS = 2 * 60 * 60 * 1000;
+const MAX_READER_ARTICLES = 20;
 
 // Create local stores
 let activeDownloads = {}; // downloadId -> { item, win, name, total }
@@ -102,6 +106,81 @@ const passwordsStore = new Store('passwords', { passwords: [] });
 const certificateExceptionsStore = new Store('certificate-exceptions', { exceptions: {} });
 const passwordBreachCacheStore = new Store('password-breach-cache', { cache: {} });
 const PASSWORD_ENCODING = 'safeStorage:v1';
+
+const MAIN_TEXT = {
+  tr: {
+    readerModeTitle: 'Okuma Modu',
+    readerModeContext: 'Okuma Modunda Aç',
+    readerNoActiveTab: 'Aktif sekme bulunamadı.',
+    readerNoActivePage: 'Aktif sayfa bulunamadı.',
+    readerWebOnly: 'Okuma modu yalnızca web sayfalarında kullanılabilir.',
+    readerNoArticleText: 'Okuma modu yeterli makale metni bulamadı.',
+    settingsExportTitle: 'Ayarları Dışa Aktar',
+    settingsImportTitle: 'Ayarları İçe Aktar',
+    invalidSettingsFile: 'Geçersiz ayar dosyası formatı.',
+    wallpaperSelectTitle: 'Yeni Sekme Arka Planı Seç',
+    passwordsImportTitle: 'Şifreleri İçe Aktar (CSV)',
+    passwordsExportTitle: 'Şifreleri Dışarı Aktar (CSV)',
+    bookmarksExportTitle: 'Yer İmlerini Dışa Aktar',
+    bookmarksImportTitle: 'Yer İmlerini İçe Aktar',
+    filterJsonFiles: 'JSON Dosyaları',
+    filterCsvFiles: 'CSV Dosyaları',
+    filterHtmlFiles: 'HTML Dosyaları',
+    filterImageFiles: 'Resimler',
+    filterAllFiles: 'Tüm Dosyalar'
+  },
+  en: {
+    readerModeTitle: 'Reader Mode',
+    readerModeContext: 'Open in Reader Mode',
+    readerNoActiveTab: 'Active tab not found.',
+    readerNoActivePage: 'Active page not found.',
+    readerWebOnly: 'Reader mode can only be used on web pages.',
+    readerNoArticleText: 'Reader mode could not find enough article text.',
+    settingsExportTitle: 'Export Settings',
+    settingsImportTitle: 'Import Settings',
+    invalidSettingsFile: 'Invalid settings file format.',
+    wallpaperSelectTitle: 'Select New Tab Background',
+    passwordsImportTitle: 'Import Passwords (CSV)',
+    passwordsExportTitle: 'Export Passwords (CSV)',
+    bookmarksExportTitle: 'Export Bookmarks',
+    bookmarksImportTitle: 'Import Bookmarks',
+    filterJsonFiles: 'JSON Files',
+    filterCsvFiles: 'CSV Files',
+    filterHtmlFiles: 'HTML Files',
+    filterImageFiles: 'Images',
+    filterAllFiles: 'All Files'
+  },
+  fr: {
+    readerModeTitle: 'Mode lecture',
+    readerModeContext: 'Ouvrir en mode lecture',
+    readerNoActiveTab: 'Onglet actif introuvable.',
+    readerNoActivePage: 'Page active introuvable.',
+    readerWebOnly: 'Le mode lecture est réservé aux pages web.',
+    readerNoArticleText: 'Le mode lecture n’a pas trouvé assez de texte.',
+    settingsExportTitle: 'Exporter les paramètres',
+    settingsImportTitle: 'Importer les paramètres',
+    invalidSettingsFile: 'Format de fichier de paramètres invalide.',
+    wallpaperSelectTitle: 'Choisir l’arrière-plan du nouvel onglet',
+    passwordsImportTitle: 'Importer les mots de passe (CSV)',
+    passwordsExportTitle: 'Exporter les mots de passe (CSV)',
+    bookmarksExportTitle: 'Exporter les favoris',
+    bookmarksImportTitle: 'Importer les favoris',
+    filterJsonFiles: 'Fichiers JSON',
+    filterCsvFiles: 'Fichiers CSV',
+    filterHtmlFiles: 'Fichiers HTML',
+    filterImageFiles: 'Images',
+    filterAllFiles: 'Tous les fichiers'
+  }
+};
+
+function getAppLanguage() {
+  const lang = settingsStore.get('language') || 'tr';
+  return Object.prototype.hasOwnProperty.call(MAIN_TEXT, lang) ? lang : 'en';
+}
+
+function appText(key, lang = getAppLanguage()) {
+  return MAIN_TEXT[lang]?.[key] || MAIN_TEXT.en[key] || MAIN_TEXT.tr[key] || key;
+}
 
 function isPasswordEncryptionAvailable() {
   try {
@@ -286,6 +365,7 @@ let activeTabs = {}; // windowId -> activeTabId
 let windowBounds = {}; // windowId -> bounds
 let tabOrders = {}; // windowId -> [tabId, tabId, ...]
 let incognitoSession = null;
+const readerArticles = new Map();
 const spaceSessions = new Map();
 const configuredProfilePartitions = new Set();
 let pendingPermissionRequests = {};
@@ -698,8 +778,10 @@ function setupViewListeners(tab, view, isSplitSide) {
   wc.on('did-navigate', (event, newUrl) => {
     if (isSplitSide) {
       tab.splitUrl = newUrl;
+      if (!isReaderPageUrl(newUrl)) tab.splitReaderOriginalUrl = '';
     } else {
       tab.url = newUrl;
+      if (!isReaderPageUrl(newUrl)) tab.readerOriginalUrl = '';
     }
     tab.canGoBack = wc.canGoBack();
     tab.canGoForward = wc.canGoForward();
@@ -833,9 +915,14 @@ function setupViewListeners(tab, view, isSplitSide) {
         sendToUI(getWin(), 'ui-hotkey-newtab');
       }
       // Ctrl + R (Reload)
-      if (isControl && input.key.toLowerCase() === 'r') {
+      if (isControl && !input.shift && input.key.toLowerCase() === 'r') {
         event.preventDefault();
         wc.reload();
+      }
+      // Ctrl + Shift + R (Reader Mode)
+      if (isControl && input.shift && input.key.toLowerCase() === 'r') {
+        event.preventDefault();
+        sendToUI(getWin(), 'ui-hotkey-reader');
       }
       // Ctrl + L (Focus Address Bar)
       if (isControl && input.key.toLowerCase() === 'l') {
@@ -939,6 +1026,10 @@ function setupViewListeners(tab, view, isSplitSide) {
 
   // Custom CSS injection
   wc.on('did-finish-load', () => {
+    if (isReaderPageUrl(wc.getURL())) {
+      removeCustomCssFromView(view);
+      return;
+    }
     const customCss = settingsStore.get('customCss');
     if (settingsStore.get('customCssEnabled') !== false && customCss) {
       applyCustomCssToView(view, customCss);
@@ -963,6 +1054,7 @@ function setupViewListeners(tab, view, isSplitSide) {
       openLinkNewTab: lang === 'tr' ? 'Bağlantıyı Yeni Sekmede Aç' : (lang === 'fr' ? 'Ouvrir le lien dans un nouvel onglet' : 'Open Link in New Tab'),
       openLinkNewIncognitoTab: lang === 'tr' ? 'Bağlantıyı Yeni Gizli Sekmede Aç' : (lang === 'fr' ? 'Ouvrir le lien dans un nouvel onglet privé' : 'Open Link in New Incognito Tab')
     };
+    labels.readerMode = appText('readerModeContext', lang);
 
     if (params.linkURL) {
       menu.append(new MenuItem({
@@ -994,6 +1086,17 @@ function setupViewListeners(tab, view, isSplitSide) {
       menu.append(new MenuItem({ label: labels.back, enabled: wc.canGoBack(), click: () => wc.goBack() }));
       menu.append(new MenuItem({ label: labels.forward, enabled: wc.canGoForward(), click: () => wc.goForward() }));
       menu.append(new MenuItem({ label: labels.reload, click: () => wc.reload() }));
+      if (isReadableWebUrl(wc.getURL())) {
+        menu.append(new MenuItem({ type: 'separator' }));
+        menu.append(new MenuItem({
+          label: labels.readerMode,
+          click: () => {
+            openReaderModeForTab(tab).catch(error => {
+              console.error('[ReaderMode] Failed to open reader mode:', error);
+            });
+          }
+        }));
+      }
     }
     menu.popup({ window: getWin() });
   });
@@ -1378,6 +1481,353 @@ function formatUrl(val) {
   return searchUrl + encodeURIComponent(url);
 }
 
+function isReaderPageUrl(url) {
+  return String(url || '').toLowerCase().startsWith(READER_PAGE_URL_PREFIX);
+}
+
+function getReaderPageUrl(articleId) {
+  const url = new URL(pathToFileURL(READER_PAGE_PATH).toString());
+  url.searchParams.set('id', articleId);
+  return url.toString();
+}
+
+function isReadableWebUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch (error) {
+    return false;
+  }
+}
+
+function cleanupReaderArticles() {
+  const now = Date.now();
+  for (const [id, article] of readerArticles.entries()) {
+    if (!article || now - (article.createdAt || 0) > READER_ARTICLE_TTL_MS) {
+      readerArticles.delete(id);
+    }
+  }
+
+  while (readerArticles.size > MAX_READER_ARTICLES) {
+    const oldest = readerArticles.keys().next().value;
+    if (!oldest) break;
+    readerArticles.delete(oldest);
+  }
+}
+
+function storeReaderArticle(article) {
+  cleanupReaderArticles();
+  const id = crypto.randomBytes(16).toString('hex');
+  readerArticles.set(id, {
+    ...article,
+    uiLanguage: article?.uiLanguage || getAppLanguage(),
+    id,
+    createdAt: Date.now()
+  });
+  return id;
+}
+
+function cleanReaderText(value, maxLength = 4000) {
+  return String(value || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
+}
+
+function cleanReaderBlockText(value, maxLength = 12000) {
+  return String(value || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, maxLength);
+}
+
+function isSafeReaderImageUrl(value) {
+  try {
+    const parsed = new URL(String(value || ''));
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch (error) {
+    return false;
+  }
+}
+
+function sanitizeReaderArticle(rawArticle, fallbackUrl) {
+  const rawBlocks = Array.isArray(rawArticle?.blocks) ? rawArticle.blocks : [];
+  const blocks = [];
+  const seenText = new Set();
+  let wordCount = 0;
+  let imageCount = 0;
+
+  for (const block of rawBlocks) {
+    if (!block || typeof block !== 'object') continue;
+    const type = String(block.type || '').toLowerCase();
+
+    if (type === 'image') {
+      if (imageCount >= 8 || !isSafeReaderImageUrl(block.src)) continue;
+      blocks.push({
+        type: 'image',
+        src: String(block.src),
+        alt: cleanReaderText(block.alt, 200),
+        caption: cleanReaderText(block.caption, 300)
+      });
+      imageCount += 1;
+      continue;
+    }
+
+    if (type === 'list') {
+      const items = Array.isArray(block.items)
+        ? block.items.map(item => cleanReaderText(item, 1000)).filter(Boolean).slice(0, 40)
+        : [];
+      if (!items.length) continue;
+      items.forEach(item => {
+        wordCount += item.split(/\s+/).filter(Boolean).length;
+      });
+      blocks.push({ type: 'list', ordered: !!block.ordered, items });
+      continue;
+    }
+
+    if (!['heading', 'paragraph', 'quote', 'code'].includes(type)) continue;
+    const text = cleanReaderBlockText(block.text, type === 'code' ? 20000 : 12000);
+    if (!text || text.length < 2) continue;
+
+    const key = text.toLowerCase().slice(0, 280);
+    if (seenText.has(key)) continue;
+    seenText.add(key);
+
+    wordCount += text.split(/\s+/).filter(Boolean).length;
+    blocks.push({
+      type,
+      text,
+      level: Number.isFinite(Number(block.level)) ? Math.max(1, Math.min(4, Number(block.level))) : undefined
+    });
+  }
+
+  if (wordCount < 40 && blocks.filter(block => block.type !== 'image').length < 2) {
+    throw new Error(appText('readerNoArticleText'));
+  }
+
+  return {
+    title: cleanReaderText(rawArticle?.title, 240) || appText('readerModeTitle'),
+    byline: cleanReaderText(rawArticle?.byline, 160),
+    siteName: cleanReaderText(rawArticle?.siteName, 120),
+    originalUrl: isReadableWebUrl(rawArticle?.url) ? rawArticle.url : fallbackUrl,
+    excerpt: cleanReaderText(rawArticle?.excerpt, 320),
+    lang: cleanReaderText(rawArticle?.lang, 20),
+    direction: rawArticle?.direction === 'rtl' ? 'rtl' : 'ltr',
+    wordCount,
+    readingMinutes: Math.max(1, Math.ceil(wordCount / 220)),
+    blocks: blocks.slice(0, 260)
+  };
+}
+
+function extractReadableArticleFromPage() {
+  function textOf(node) {
+    return String((node && (node.innerText || node.textContent)) || '')
+      .replace(/\u00a0/g, ' ')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  function oneLine(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function meta(selector, attr) {
+    const el = document.querySelector(selector);
+    return el ? oneLine(el.getAttribute(attr || 'content')) : '';
+  }
+
+  function isHidden(el) {
+    if (!el || el.nodeType !== 1) return true;
+    if (el.hidden || el.getAttribute('aria-hidden') === 'true') return true;
+    const style = window.getComputedStyle(el);
+    return !style || style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0;
+  }
+
+  function shouldSkip(el) {
+    if (!el || el.nodeType !== 1 || isHidden(el)) return true;
+    const tag = el.tagName;
+    if (['SCRIPT', 'STYLE', 'NOSCRIPT', 'IFRAME', 'CANVAS', 'SVG', 'NAV', 'HEADER', 'FOOTER', 'ASIDE', 'FORM', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'].includes(tag)) return true;
+    const classId = `${el.id || ''} ${el.className || ''}`.toLowerCase();
+    return /(ad-|ads|advert|banner|cookie|newsletter|popup|modal|share|social|comment|sidebar|related|recommend|promo)/i.test(classId);
+  }
+
+  function scoreElement(el) {
+    if (!el || shouldSkip(el)) return 0;
+    const text = textOf(el);
+    if (text.length < 120) return 0;
+    const paragraphs = Array.from(el.querySelectorAll('p')).filter(p => textOf(p).length > 60).length;
+    const headings = el.querySelectorAll('h1,h2,h3').length;
+    const tagBonus = el.tagName === 'ARTICLE' ? 900 : (el.tagName === 'MAIN' ? 700 : 0);
+    return text.length + paragraphs * 220 + headings * 80 + tagBonus;
+  }
+
+  const candidates = Array.from(document.querySelectorAll([
+    'article',
+    'main',
+    '[role="main"]',
+    '[itemprop="articleBody"]',
+    '.article',
+    '.article-body',
+    '.post',
+    '.post-content',
+    '.entry-content',
+    '.content',
+    '#content'
+  ].join(',')));
+  candidates.push(document.body);
+
+  let container = document.body;
+  let bestScore = 0;
+  candidates.forEach(candidate => {
+    const score = scoreElement(candidate);
+    if (score > bestScore) {
+      bestScore = score;
+      container = candidate;
+    }
+  });
+
+  const blocks = [];
+  const seen = new Set();
+  let imageCount = 0;
+
+  function addTextBlock(type, value, level) {
+    const text = String(value || '').trim();
+    if (!text || text.length < 2) return;
+    const key = `${type}:${oneLine(text).toLowerCase().slice(0, 260)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    blocks.push({ type, text, level });
+  }
+
+  function addImage(img, caption) {
+    if (imageCount >= 8) return;
+    const rawSrc = img.currentSrc || img.src || img.getAttribute('src') || '';
+    if (!rawSrc) return;
+    let src = '';
+    try {
+      const absolute = new URL(rawSrc, location.href);
+      if (absolute.protocol === 'http:' || absolute.protocol === 'https:') src = absolute.href;
+    } catch (error) { }
+    if (!src) return;
+    blocks.push({ type: 'image', src, alt: oneLine(img.getAttribute('alt') || ''), caption: oneLine(caption || '') });
+    imageCount += 1;
+  }
+
+  function walk(node) {
+    if (!node || blocks.length >= 260 || node.nodeType !== 1) return;
+    const el = node;
+    if (shouldSkip(el)) return;
+
+    const tag = el.tagName;
+    if (/^H[1-4]$/.test(tag)) {
+      addTextBlock('heading', textOf(el), Number(tag.slice(1)));
+      return;
+    }
+    if (tag === 'P') {
+      const text = textOf(el);
+      if (text.length >= 25) addTextBlock('paragraph', text);
+      return;
+    }
+    if (tag === 'BLOCKQUOTE') {
+      const text = textOf(el);
+      if (text.length >= 20) addTextBlock('quote', text);
+      return;
+    }
+    if (tag === 'PRE' || tag === 'CODE') {
+      const text = textOf(el);
+      if (text.length >= 8) addTextBlock('code', text);
+      return;
+    }
+    if (tag === 'UL' || tag === 'OL') {
+      const items = Array.from(el.children)
+        .filter(child => child.tagName === 'LI' && !shouldSkip(child))
+        .map(child => oneLine(textOf(child)))
+        .filter(item => item.length >= 2)
+        .slice(0, 40);
+      if (items.length) blocks.push({ type: 'list', ordered: tag === 'OL', items });
+      return;
+    }
+    if (tag === 'FIGURE') {
+      const img = el.querySelector('img');
+      if (img) addImage(img, textOf(el.querySelector('figcaption')));
+      return;
+    }
+    if (tag === 'IMG') {
+      addImage(el, '');
+      return;
+    }
+
+    Array.from(el.children).forEach(walk);
+  }
+
+  walk(container);
+
+  if (blocks.filter(block => block.type !== 'image').length < 2) {
+    textOf(container).split(/\n{2,}/).forEach(part => {
+      if (part.trim().length >= 40) addTextBlock('paragraph', part.trim());
+    });
+  }
+
+  const h1 = document.querySelector('h1');
+  const title = meta('meta[property="og:title"]') ||
+    meta('meta[name="twitter:title"]') ||
+    (h1 ? oneLine(textOf(h1)) : '') ||
+    oneLine(document.title);
+
+  return {
+    title,
+    byline: meta('meta[name="author"]') || meta('[itemprop="author"]', 'content'),
+    siteName: meta('meta[property="og:site_name"]') || location.hostname,
+    url: location.href,
+    excerpt: meta('meta[name="description"]') || meta('meta[property="og:description"]'),
+    lang: document.documentElement.lang || navigator.language || '',
+    direction: document.dir || document.documentElement.dir || 'ltr',
+    blocks
+  };
+}
+
+async function extractReadableArticleFromView(view, fallbackUrl) {
+  const wc = view?.webContents;
+  if (!wc || wc.isDestroyed()) {
+    throw new Error(appText('readerNoActivePage'));
+  }
+  const rawArticle = await wc.executeJavaScript(`(${extractReadableArticleFromPage.toString()})();`, true);
+  return sanitizeReaderArticle(rawArticle, fallbackUrl);
+}
+
+async function openReaderModeForTab(tab) {
+  if (!tab) throw new Error(appText('readerNoActiveTab'));
+
+  const isSplit = tab.activeSplitSide === 'split' && tab.splitView;
+  const targetView = isSplit ? tab.splitView : tab.view;
+  const currentUrl = targetView?.webContents?.getURL() || (isSplit ? tab.splitUrl : tab.url);
+  if (!isReadableWebUrl(currentUrl)) {
+    throw new Error(appText('readerWebOnly'));
+  }
+
+  const article = await extractReadableArticleFromView(targetView, currentUrl);
+  article.uiLanguage = getAppLanguage();
+  const articleId = storeReaderArticle(article);
+  const readerUrl = getReaderPageUrl(articleId);
+
+  if (isSplit) {
+    tab.splitUrl = readerUrl;
+    tab.splitReaderOriginalUrl = currentUrl;
+  } else {
+    tab.url = readerUrl;
+    tab.readerOriginalUrl = currentUrl;
+    tab.title = article.title || appText('readerModeTitle');
+  }
+
+  await targetView.webContents.loadURL(readerUrl);
+  saveSession();
+  return { ok: true, url: readerUrl, title: article.title, originalUrl: article.originalUrl };
+}
+
 function sendToUI(win, channel, data) {
   if (win && win.webContents) {
     win.webContents.send(channel, data);
@@ -1448,8 +1898,17 @@ function isLocalNewTabSender(event) {
   }
 }
 
+function isLocalReaderSender(event) {
+  if (!isKnownTabSender(event)) return false;
+  try {
+    return isReaderPageUrl(event.sender.getURL());
+  } catch (error) {
+    return false;
+  }
+}
+
 function assertSettingsReadSender(event) {
-  if (isMainUiSender(event) || isLocalNewTabSender(event)) return;
+  if (isMainUiSender(event) || isLocalNewTabSender(event) || isLocalReaderSender(event)) return;
   throw new Error('Unauthorized settings IPC sender');
 }
 
@@ -1479,6 +1938,9 @@ function saveSession() {
       try {
         url = tab.view.webContents.getURL();
       } catch (e) { }
+    }
+    if (isReaderPageUrl(url) && tab.readerOriginalUrl) {
+      url = tab.readerOriginalUrl;
     }
     return {
       id: tab.id,
@@ -2068,6 +2530,23 @@ ipcMain.handle('active-tab-capture-preview', async (event) => {
     console.error('[Preview] Failed to capture active tab:', err);
     return '';
   }
+});
+
+ipcMain.handle('reader-mode-open', async (event, tabId) => {
+  const win = assertMainUiSender(event);
+  const tab = tabs[tabId];
+  if (!tab || tab.windowId !== win.id) {
+    throw new Error('Active tab not found.');
+  }
+  return openReaderModeForTab(tab);
+});
+
+ipcMain.handle('reader-article-get', (event, articleId) => {
+  if (!isLocalReaderSender(event)) {
+    throw new Error('Unauthorized reader IPC sender');
+  }
+  cleanupReaderArticles();
+  return readerArticles.get(String(articleId || '')) || null;
 });
 
 // Storage and Preferences IPC handlers
@@ -3017,10 +3496,11 @@ ipcMain.handle('settings-set', (event, { key, value }) => {
 
 ipcMain.handle('settings-export', async (event) => {
   const win = assertMainUiSender(event);
+  const lang = getAppLanguage();
   const { canceled, filePath } = await dialog.showSaveDialog(win, {
-    title: 'Ayarları Dışa Aktar',
+    title: appText('settingsExportTitle', lang),
     defaultPath: 'oslo-settings.json',
-    filters: [{ name: 'JSON Files', extensions: ['json'] }]
+    filters: [{ name: appText('filterJsonFiles', lang), extensions: ['json'] }]
   });
 
   if (canceled || !filePath) return false;
@@ -3037,10 +3517,11 @@ ipcMain.handle('settings-export', async (event) => {
 
 ipcMain.handle('settings-import', async (event) => {
   const win = assertMainUiSender(event);
+  const lang = getAppLanguage();
   const { canceled, filePaths } = await dialog.showOpenDialog(win, {
-    title: 'Ayarları İçe Aktar',
+    title: appText('settingsImportTitle', lang),
     properties: ['openFile'],
-    filters: [{ name: 'JSON Files', extensions: ['json'] }]
+    filters: [{ name: appText('filterJsonFiles', lang), extensions: ['json'] }]
   });
 
   if (canceled || !filePaths || filePaths.length === 0) return null;
@@ -3050,7 +3531,7 @@ ipcMain.handle('settings-import', async (event) => {
     const content = fs.readFileSync(filePaths[0], 'utf-8');
     const imported = JSON.parse(content);
     if (!imported || typeof imported !== 'object' || Array.isArray(imported)) {
-      throw new Error('Geçersiz ayar dosyası formatı.');
+      throw new Error(appText('invalidSettingsFile', lang));
     }
 
     const importedSettings = Object.entries(imported).filter(([key]) => isKnownSettingKey(key));
@@ -3122,12 +3603,13 @@ ipcMain.handle('settings-reset', async (event) => {
 
 ipcMain.handle('newtab-wallpaper-select-file', async (event) => {
   const win = assertMainUiSender(event);
+  const lang = getAppLanguage();
   const { canceled, filePaths } = await dialog.showOpenDialog(win, {
-    title: 'Yeni Sekme Arka Planı Seç',
+    title: appText('wallpaperSelectTitle', lang),
     properties: ['openFile'],
     filters: [
-      { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'avif'] },
-      { name: 'All Files', extensions: ['*'] }
+      { name: appText('filterImageFiles', lang), extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'avif'] },
+      { name: appText('filterAllFiles', lang), extensions: ['*'] }
     ]
   });
 
@@ -3319,11 +3801,12 @@ function parsePasswordsCsv(content) {
 
 ipcMain.handle('passwords-import', async (event) => {
   const focusedWindow = assertMainUiSender(event);
+  const lang = getAppLanguage();
   const { canceled, filePaths } = await dialog.showOpenDialog(focusedWindow, {
-    title: 'Şifreleri İçe Aktar (CSV)',
+    title: appText('passwordsImportTitle', lang),
     filters: [
-      { name: 'CSV Files', extensions: ['csv'] },
-      { name: 'All Files', extensions: ['*'] }
+      { name: appText('filterCsvFiles', lang), extensions: ['csv'] },
+      { name: appText('filterAllFiles', lang), extensions: ['*'] }
     ],
     properties: ['openFile']
   });
@@ -3384,11 +3867,12 @@ ipcMain.handle('passwords-export', async (event) => {
   }
 
   const focusedWindow = BrowserWindow.getFocusedWindow();
+  const lang = getAppLanguage();
   const { canceled, filePath } = await dialog.showSaveDialog(focusedWindow, {
-    title: 'Şifreleri Dışarı Aktar (CSV)',
+    title: appText('passwordsExportTitle', lang),
     defaultPath: 'oslo_passwords.csv',
     filters: [
-      { name: 'CSV Files', extensions: ['csv'] }
+      { name: appText('filterCsvFiles', lang), extensions: ['csv'] }
     ]
   });
 
@@ -3814,10 +4298,11 @@ app.on('before-quit', async (event) => {
 // Bookmarks Export Netscape HTML
 ipcMain.handle('bookmarks-export', async (event) => {
   const win = assertMainUiSender(event);
+  const lang = getAppLanguage();
   const { filePath } = await dialog.showSaveDialog(win, {
-    title: 'Yer İmlerini Dışa Aktar',
+    title: appText('bookmarksExportTitle', lang),
     defaultPath: 'bookmarks.html',
-    filters: [{ name: 'HTML Files', extensions: ['html'] }]
+    filters: [{ name: appText('filterHtmlFiles', lang), extensions: ['html'] }]
   });
 
   if (!filePath) return null;
@@ -3870,10 +4355,11 @@ ipcMain.handle('bookmarks-export', async (event) => {
 // Bookmarks Import Netscape HTML Parser
 ipcMain.handle('bookmarks-import', async (event) => {
   const win = assertMainUiSender(event);
+  const lang = getAppLanguage();
   const { filePaths } = await dialog.showOpenDialog(win, {
-    title: 'Yer İmlerini İçe Aktar',
+    title: appText('bookmarksImportTitle', lang),
     properties: ['openFile'],
-    filters: [{ name: 'HTML Files', extensions: ['html'] }]
+    filters: [{ name: appText('filterHtmlFiles', lang), extensions: ['html'] }]
   });
 
   if (!filePaths || filePaths.length === 0) return null;

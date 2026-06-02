@@ -124,7 +124,7 @@ export function initPanels() {
   if (bookmarksBar && bookmarksBarContextMenu) {
     bookmarksBar.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      
+
       // Hide tab context menu
       const tabContextMenu = document.getElementById('tab-context-menu');
       if (tabContextMenu) tabContextMenu.style.display = 'none';
@@ -280,7 +280,7 @@ export function initPanels() {
       dlFilterItems.forEach(el => el.classList.remove('active'));
       item.classList.add('active');
       state.downloadsFilter = item.getAttribute('data-downloads-filter');
-      
+
       const titleEl = document.getElementById('downloads-header-title');
       if (titleEl) {
         if (state.downloadsFilter === 'all') titleEl.textContent = translations[state.currentLang]['downloads-all'] || 'Tüm İndirmeler';
@@ -327,7 +327,7 @@ export function addFolder(parentFolderId = null) {
   const folderCreateModal = document.getElementById('folder-create-modal');
   const folderCreateNameInput = document.getElementById('folder-create-name');
   const defaultName = (translations[state.currentLang] && translations[state.currentLang]['new-folder-default-name']) || 'Yeni Klasör';
-  
+
   if (folderCreateNameInput) {
     folderCreateNameInput.value = defaultName;
   }
@@ -348,31 +348,31 @@ function confirmFolderCreate() {
   const folderCreateModal = document.getElementById('folder-create-modal');
   const folderCreateNameInput = document.getElementById('folder-create-name');
   const defaultName = (translations[state.currentLang] && translations[state.currentLang]['new-folder-default-name']) || 'Yeni Klasör';
-  
+
   const name = (folderCreateNameInput?.value || '').trim() || defaultName;
   const parentFolderId = state._pendingFolderParentId || null;
-  
+
   const generateId = () => {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
       return crypto.randomUUID();
     }
     return 'f_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
   };
-  
+
   const newFolder = {
     id: generateId(),
     isFolder: true,
     title: name,
     folderId: parentFolderId
   };
-  
+
   const newBookmarksList = [...state.bookmarks, newFolder];
   window.oslo.setBookmarks(newBookmarksList).then(updated => {
     state.bookmarks = updated;
     renderBookmarks();
     renderBookmarksBar();
   });
-  
+
   closeOverlayWithContentPreview(folderCreateModal);
   state._pendingFolderParentId = null;
 }
@@ -406,21 +406,21 @@ function moveBookmarkAndReorder(id, targetItem) {
   const draggedIndex = state.bookmarks.findIndex(b => b.id === id);
   const targetIndex = state.bookmarks.findIndex(b => b.id === targetItem.id);
   if (draggedIndex === -1 || targetIndex === -1) return;
-  
+
   const dragged = state.bookmarks[draggedIndex];
-  
+
   // Set the folderId of the dragged item to target folderId
   dragged.folderId = targetItem.folderId === undefined ? null : targetItem.folderId;
-  
+
   // Remove dragged item from its old position
   state.bookmarks.splice(draggedIndex, 1);
-  
+
   // Find target index again because array length changed
   const newTargetIndex = state.bookmarks.findIndex(b => b.id === targetItem.id);
-  
+
   // Insert at target index
   state.bookmarks.splice(newTargetIndex, 0, dragged);
-  
+
   window.oslo.setBookmarks(state.bookmarks).then(updated => {
     state.bookmarks = updated;
     renderBookmarks();
@@ -441,7 +441,7 @@ function deleteFolderAndContents(folderId) {
       }
     });
   }
-  
+
   const remaining = state.bookmarks.filter(b => !idsToDelete.has(b.id));
   window.oslo.setBookmarks(remaining).then(updated => {
     state.bookmarks = updated;
@@ -470,7 +470,7 @@ function setupDragDropListeners(el, item) {
     e.dataTransfer.setData('text/plain', item.id);
     e.dataTransfer.effectAllowed = 'move';
   });
-  
+
   el.addEventListener('dragend', (e) => {
     e.stopPropagation();
     el.classList.remove('dragging');
@@ -482,32 +482,32 @@ function setupDragDropListeners(el, item) {
       closeAllBookmarksDropdowns();
     }
   });
-  
+
   el.addEventListener('dragover', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (state.draggedBookmarkId) {
       if (state.draggedBookmarkId === item.id) return;
       if (item.isFolder && isDescendant(state.draggedBookmarkId, item.id)) return;
     }
-    
+
     el.classList.add('drag-over');
   });
-  
+
   el.addEventListener('dragleave', (e) => {
     e.stopPropagation();
     el.classList.remove('drag-over');
   });
-  
+
   el.addEventListener('drop', (e) => {
     e.preventDefault();
     e.stopPropagation();
     el.classList.remove('drag-over');
-    
+
     const draggedId = e.dataTransfer.getData('text/plain') || state.draggedBookmarkId;
     if (!draggedId || draggedId === item.id) return;
-    
+
     if (!item.isFolder) {
       // Dropped on a bookmark, move to same folder as the bookmark and reorder!
       moveBookmarkAndReorder(draggedId, item);
@@ -524,7 +524,7 @@ function renderTree(parentId, containerEl, depth) {
     const bFolderId = b.folderId === undefined ? null : b.folderId;
     return bFolderId === parentId;
   });
-  
+
   if (children.length === 0 && parentId !== null) {
     const emptyMsg = document.createElement('div');
     emptyMsg.style.padding = '6px 12px';
@@ -535,14 +535,14 @@ function renderTree(parentId, containerEl, depth) {
     containerEl.appendChild(emptyMsg);
     return;
   }
-  
+
   children.forEach(b => {
     if (b.isFolder) {
       const folderEl = document.createElement('div');
       folderEl.className = 'panel-folder-item';
-      
+
       const isExpanded = state.expandedFolders && state.expandedFolders.includes(b.id);
-      
+
       const headerEl = document.createElement('div');
       headerEl.className = 'panel-folder-header';
       headerEl.setAttribute('draggable', 'true');
@@ -567,7 +567,7 @@ function renderTree(parentId, containerEl, depth) {
           </button>
         </div>
       `;
-      
+
       const caret = headerEl.querySelector('.folder-caret');
       const titleSpan = headerEl.querySelector('.folder-title');
       const toggleExpand = (e) => {
@@ -581,26 +581,26 @@ function renderTree(parentId, containerEl, depth) {
         }
         renderBookmarks();
       };
-      
+
       caret.addEventListener('click', toggleExpand);
       titleSpan.addEventListener('click', toggleExpand);
-      
+
       const editBtn = headerEl.querySelector('.edit-btn');
       editBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         openBookmarkEditModal(b);
       });
-      
+
       const deleteBtn = headerEl.querySelector('.delete-btn');
       deleteBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         deleteFolderAndContents(b.id);
       });
-      
+
       setupDragDropListeners(headerEl, b);
-      
+
       folderEl.appendChild(headerEl);
-      
+
       const childrenContainer = document.createElement('div');
       childrenContainer.className = `panel-folder-children ${isExpanded ? 'open' : ''}`;
       childrenContainer.style.paddingLeft = '12px';
@@ -609,7 +609,7 @@ function renderTree(parentId, containerEl, depth) {
       childrenContainer.style.marginLeft = '12px';
       childrenContainer.style.marginTop = '4px';
       childrenContainer.style.marginBottom = '4px';
-      
+
       childrenContainer.addEventListener('dragover', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -619,35 +619,35 @@ function renderTree(parentId, containerEl, depth) {
           childrenContainer.classList.add('drag-over');
         }
       });
-      
+
       childrenContainer.addEventListener('dragleave', (e) => {
         e.stopPropagation();
         childrenContainer.classList.remove('drag-over');
       });
-      
+
       childrenContainer.addEventListener('drop', (e) => {
         e.preventDefault();
         e.stopPropagation();
         childrenContainer.classList.remove('drag-over');
-        
+
         const draggedId = e.dataTransfer.getData('text/plain') || state.draggedBookmarkId;
         if (!draggedId || draggedId === b.id) return;
         if (isDescendant(draggedId, b.id)) return;
-        
+
         moveBookmark(draggedId, b.id);
       });
-      
+
       renderTree(b.id, childrenContainer, depth + 1);
       folderEl.appendChild(childrenContainer);
-      
+
       containerEl.appendChild(folderEl);
     } else {
       const item = document.createElement('div');
       item.className = 'panel-item';
       item.setAttribute('draggable', 'true');
-      
+
       const faviconUrl = getBookmarkFaviconUrl(b);
-      
+
       item.innerHTML = `
         <img class="panel-item-favicon" src="${escapeAttribute(faviconUrl)}" onerror="this.src='../../assets/logo.svg'">
         <div class="panel-item-info">
@@ -667,7 +667,7 @@ function renderTree(parentId, containerEl, depth) {
           </button>
         </div>
       `;
-      
+
       item.addEventListener('click', (e) => {
         if (e.target.closest('.panel-item-actions')) return;
         if (state.activeTabId) {
@@ -675,21 +675,21 @@ function renderTree(parentId, containerEl, depth) {
           document.getElementById('bookmarks-panel')?.classList.remove('open');
         }
       });
-      
+
       const editBtn = item.querySelector('.edit-btn');
       editBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         openBookmarkEditModal(b);
       });
-      
+
       const deleteBtn = item.querySelector('.delete-btn');
       deleteBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         deleteBookmarkItem(b.id);
       });
-      
+
       setupDragDropListeners(item, b);
-      
+
       containerEl.appendChild(item);
     }
   });
@@ -727,18 +727,18 @@ function showBookmarksDropdown(folderId, triggerEl, isSubmenu = false) {
     }
     triggerEl.classList.add('dropdown-active');
   }
-  
+
   const dropdown = document.createElement('div');
   dropdown.className = 'bookmarks-bar-dropdown';
   if (isSubmenu) {
     dropdown.classList.add('submenu');
   }
-  
+
   const items = state.bookmarks.filter(b => {
     const bFolderId = b.folderId === undefined ? null : b.folderId;
     return bFolderId === folderId;
   });
-  
+
   if (items.length === 0) {
     const empty = document.createElement('div');
     empty.style.padding = '8px 12px';
@@ -748,12 +748,12 @@ function showBookmarksDropdown(folderId, triggerEl, isSubmenu = false) {
     empty.textContent = translations[state.currentLang]['empty-folder'] || '(Klasör boş)';
     dropdown.appendChild(empty);
   }
-  
+
   items.forEach(b => {
     const itemEl = document.createElement('div');
     itemEl.className = 'bookmarks-bar-dropdown-item';
     itemEl.setAttribute('draggable', 'true');
-    
+
     if (b.isFolder) {
       itemEl.innerHTML = `
         <span style="color: var(--accent-color); display: flex; align-items: center; margin-right: 4px;">
@@ -762,10 +762,10 @@ function showBookmarksDropdown(folderId, triggerEl, isSubmenu = false) {
         <span style="flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500;">${escapeHtml(b.title)}</span>
         <span style="font-size: 8px; color: var(--text-muted); margin-left: 8px;">▶</span>
       `;
-      
+
       let subMenuTimeout = null;
       let subMenuEl = null;
-      
+
       const openSubMenu = () => {
         if (subMenuEl) return;
         if (dropdown.activeSubmenu) {
@@ -776,7 +776,7 @@ function showBookmarksDropdown(folderId, triggerEl, isSubmenu = false) {
         subMenuEl = showBookmarksDropdown(b.id, itemEl, true);
         positionBookmarksDropdown(subMenuEl, rect, { submenu: true });
         dropdown.activeSubmenu = subMenuEl;
-        
+
         subMenuEl.addEventListener('mouseleave', (e) => {
           subMenuTimeout = setTimeout(() => {
             if (e.relatedTarget !== itemEl && !itemEl.contains(e.relatedTarget)) {
@@ -788,7 +788,7 @@ function showBookmarksDropdown(folderId, triggerEl, isSubmenu = false) {
           }, 150);
         });
       };
-      
+
       const closeSubMenu = () => {
         if (subMenuEl) {
           subMenuEl.remove();
@@ -796,12 +796,12 @@ function showBookmarksDropdown(folderId, triggerEl, isSubmenu = false) {
           window.dispatchEvent(new Event('resize'));
         }
       };
-      
+
       itemEl.addEventListener('mouseenter', () => {
         clearTimeout(subMenuTimeout);
         openSubMenu();
       });
-      
+
       itemEl.addEventListener('mouseleave', (e) => {
         subMenuTimeout = setTimeout(() => {
           if (subMenuEl && !subMenuEl.contains(e.relatedTarget) && e.relatedTarget !== subMenuEl) {
@@ -814,12 +814,12 @@ function showBookmarksDropdown(folderId, triggerEl, isSubmenu = false) {
       });
     } else {
       const faviconUrl = getBookmarkFaviconUrl(b);
-      
+
       itemEl.innerHTML = `
         <img class="bookmarks-bar-favicon" src="${escapeAttribute(faviconUrl)}" onerror="this.src='../../assets/logo.svg'" style="margin-right: 4px;">
         <span style="flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(b.title)}</span>
       `;
-      
+
       itemEl.addEventListener('mouseenter', () => {
         if (dropdown.activeSubmenu) {
           dropdown.activeSubmenu.remove();
@@ -827,7 +827,7 @@ function showBookmarksDropdown(folderId, triggerEl, isSubmenu = false) {
           window.dispatchEvent(new Event('resize'));
         }
       });
-      
+
       itemEl.addEventListener('click', (e) => {
         e.stopPropagation();
         if (state.activeTabId) {
@@ -836,18 +836,18 @@ function showBookmarksDropdown(folderId, triggerEl, isSubmenu = false) {
         closeAllBookmarksDropdowns();
       });
     }
-    
+
     setupDragDropListeners(itemEl, b);
     dropdown.appendChild(itemEl);
   });
-  
+
   document.body.appendChild(dropdown);
-  
+
   if (!isSubmenu) {
     const rect = triggerEl.getBoundingClientRect();
     positionBookmarksDropdown(dropdown, rect);
   }
-  
+
   window.dispatchEvent(new Event('resize'));
   return dropdown;
 }
@@ -899,7 +899,7 @@ export function renderBookmarks() {
     filteredBookmarks.forEach(b => {
       const item = document.createElement('div');
       item.className = 'panel-item';
-      
+
       const faviconUrl = getBookmarkFaviconUrl(b);
 
       item.innerHTML = `
@@ -981,7 +981,7 @@ export function renderBookmarksBar() {
   const bookmarksBarList = document.getElementById('bookmarks-bar-list');
   if (!bookmarksBarList) return;
   bookmarksBarList.innerHTML = '';
-  
+
   // Only render items at root level
   const rootItems = state.bookmarks.filter(b => {
     const bFolderId = b.folderId === undefined ? null : b.folderId;
@@ -991,7 +991,7 @@ export function renderBookmarksBar() {
   rootItems.forEach(b => {
     const item = document.createElement('div');
     item.setAttribute('draggable', 'true');
-    
+
     if (b.isFolder) {
       item.className = 'bookmarks-bar-item folder';
       item.innerHTML = `
@@ -1001,36 +1001,36 @@ export function renderBookmarksBar() {
         <span class="bookmarks-bar-title">${escapeHtml(b.title)}</span>
         <span style="font-size: 8px; color: var(--text-muted); margin-left: 2px;">▼</span>
       `;
-      
+
       item.addEventListener('click', (e) => {
         e.stopPropagation();
         showBookmarksDropdown(b.id, item);
       });
     } else {
       item.className = 'bookmarks-bar-item';
-      
+
       const faviconUrl = getBookmarkFaviconUrl(b);
-      
+
       item.innerHTML = `
         <img class="bookmarks-bar-favicon" src="${escapeAttribute(faviconUrl)}" onerror="this.src='../../assets/logo.svg'">
         <span class="bookmarks-bar-title">${escapeHtml(b.title)}</span>
       `;
-      
+
       item.addEventListener('click', () => {
         if (state.activeTabId) {
           window.oslo.navigate(state.activeTabId, b.url);
         }
       });
     }
-    
+
     setupDragDropListeners(item, b);
-    
+
     item.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
       openBookmarkEditModal(b);
     });
-    
+
     bookmarksBarList.appendChild(item);
   });
 }
@@ -1038,15 +1038,15 @@ export function renderBookmarksBar() {
 export function openBookmarkEditModal(bookmark) {
   closeAllBookmarksDropdowns();
   state.editingBookmarkId = bookmark.id; // Store editing ID instead of URL!
-  
+
   const nameInput = document.getElementById('bookmark-edit-name');
   const urlInput = document.getElementById('bookmark-edit-url');
   const urlContainer = urlInput?.closest('.settings-item');
   const modalTitle = document.getElementById('bookmark-modal-title');
   const deleteBtn = document.getElementById('btn-delete-bookmark-edit');
-  
+
   if (nameInput) nameInput.value = bookmark.title;
-  
+
   if (bookmark.isFolder) {
     if (urlContainer) urlContainer.style.display = 'none';
     if (modalTitle) modalTitle.textContent = translations[state.currentLang]['edit-folder-title'] || 'Klasörü Düzenle';
@@ -1138,7 +1138,7 @@ export function renderHistory() {
       let host = h.url || '';
       try {
         host = new URL(h.url).hostname;
-      } catch (e) {}
+      } catch (e) { }
       let displayTitle = h.title || h.url;
       if (displayTitle === 'Yeni Sekme' || displayTitle === 'New Tab' || displayTitle === 'Nouvel Onglet') {
         displayTitle = translations[state.currentLang]['new-tab'] || 'Yeni Sekme';
@@ -1171,7 +1171,7 @@ export function renderDownloads() {
 
   downloadsList.closest('.settings-tab-content')?.classList.add('active');
   downloadsList.innerHTML = '';
-  
+
   // Set default filter if not set
   state.downloadsFilter = state.downloadsFilter || 'all';
 
@@ -1210,7 +1210,7 @@ export function renderDownloads() {
     if (d.name && d.name.includes('.')) {
       ext = d.name.split('.').pop().toLowerCase();
     }
-    
+
     // Choose specific classes for file icons
     const safeExtensions = ['pdf', 'zip', 'rar', 'tar', 'gz', 'png', 'jpg', 'jpeg', 'svg', 'gif', 'mp4', 'mkv', 'avi', 'mov', 'mp3', 'wav', 'flac', 'exe', 'msi'];
     const iconClass = safeExtensions.includes(ext) ? ext : 'default';
@@ -1260,20 +1260,20 @@ export function renderDownloads() {
         <div class="download-card-meta-row">
           <div class="download-card-size">
             ${d.received !== undefined && d.total !== undefined
-              ? `<span>${formatBytes(d.received)} / ${formatBytes(d.total)}</span>`
-              : (d.total !== undefined ? `<span>${formatBytes(d.total)}</span>` : '')
-            }
+        ? `<span>${formatBytes(d.received)} / ${formatBytes(d.total)}</span>`
+        : (d.total !== undefined ? `<span>${formatBytes(d.total)}</span>` : '')
+      }
             ${d.status === 'completed' && d.timestamp
-              ? `<span style="color: var(--text-muted); font-size: 11px;">• ${new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(d.timestamp))}</span>`
-              : ''
-            }
+        ? `<span style="color: var(--text-muted); font-size: 11px;">• ${new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(d.timestamp))}</span>`
+        : ''
+      }
           </div>
           
           <div class="download-card-actions">
             ${d.status === 'completed'
-              ? `<button class="download-card-btn accent download-open-btn">${openBtnText}</button>`
-              : actionButtonsHtml
-            }
+        ? `<button class="download-card-btn accent download-open-btn">${openBtnText}</button>`
+        : actionButtonsHtml
+      }
           </div>
         </div>
       </div>

@@ -1610,9 +1610,9 @@ export function loadAboutTabSystemInfo() {
     const valNode = document.getElementById('sys-val-node');
     const valV8 = document.getElementById('sys-val-v8');
     const valUseragent = document.getElementById('sys-val-useragent');
-    
-    if (versionDisplay) versionDisplay.textContent = info.appVersion || '1.0.0-alpha.11';
-    if (versionDisplayMain) versionDisplayMain.textContent = info.appVersion || '1.0.0-alpha.11';
+
+    if (versionDisplay) versionDisplay.textContent = info.appVersion || '1.0.0-alpha.13';
+    if (versionDisplayMain) versionDisplayMain.textContent = info.appVersion || '1.0.0-alpha.13';
     if (valElectron) valElectron.textContent = info.electron || '-';
     if (valChrome) valChrome.textContent = info.chrome || '-';
     if (valNode) valNode.textContent = info.node || '-';
@@ -1629,13 +1629,13 @@ function showCustomAlert(title, message) {
     const overlay = document.createElement('div');
     overlay.id = modalId;
     overlay.className = 'modal-overlay';
-    
+
     let iconHtml = `
       <svg viewBox="0 0 24 24" width="24" height="24" fill="var(--accent-color)" style="flex-shrink:0;">
         <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h-2v2h2v4h-2v2h6v-2zm0-8h-2V7h2v2z"/>
       </svg>
     `;
-    
+
     overlay.innerHTML = `
       <div class="modal-card" style="width: 420px; border-color: var(--accent-color); background: rgba(11, 12, 14, 0.85); box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
         <div class="modal-header" style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding: 16px 20px;">
@@ -1655,7 +1655,7 @@ function showCustomAlert(title, message) {
     `;
 
     document.body.appendChild(overlay);
-    
+
     setTimeout(() => {
       overlay.classList.add('open');
     }, 10);
@@ -1679,13 +1679,13 @@ function showCustomConfirm(title, message) {
     const overlay = document.createElement('div');
     overlay.id = modalId;
     overlay.className = 'modal-overlay';
-    
+
     let iconHtml = `
       <svg viewBox="0 0 24 24" width="24" height="24" fill="#ff4d4d" style="flex-shrink:0;">
         <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
       </svg>
     `;
-    
+
     overlay.innerHTML = `
       <div class="modal-card" style="width: 440px; border-color: rgba(255, 77, 77, 0.4); background: rgba(11, 12, 14, 0.85); box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
         <div class="modal-header" style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding: 16px 20px;">
@@ -1706,7 +1706,7 @@ function showCustomConfirm(title, message) {
     `;
 
     document.body.appendChild(overlay);
-    
+
     setTimeout(() => {
       overlay.classList.add('open');
     }, 10);
@@ -1729,10 +1729,10 @@ function showBookmarksImportExportModal(type, res) {
   return new Promise((resolve) => {
     const modalOverlay = document.createElement('div');
     modalOverlay.className = 'bookmarks-success-modal-overlay';
-    
+
     const lang = state.currentLang || 'en';
     const isImport = type === 'import';
-    
+
     const locales = {
       tr: {
         importTitle: 'İçe Aktarma Başarılı!',
@@ -1762,12 +1762,12 @@ function showBookmarksImportExportModal(type, res) {
         btnText: 'Super !',
       }
     };
-    
+
     const text = locales[lang] || locales.en;
-    
+
     const foldersCount = isImport ? (res.foldersAdded || 0) : (res.totalFolders || 0);
     const linksCount = isImport ? (res.linksAdded || 0) : (res.totalLinks || 0);
-    
+
     modalOverlay.innerHTML = `
       <div class="bookmarks-success-card">
         <div class="bookmarks-success-icon-container">
@@ -1801,15 +1801,15 @@ function showBookmarksImportExportModal(type, res) {
         <button class="bookmarks-success-btn">${text.btnText}</button>
       </div>
     `;
-    
+
     document.body.appendChild(modalOverlay);
-    
+
     window.dispatchEvent(new Event('resize'));
-    
+
     setTimeout(() => {
       modalOverlay.classList.add('open');
     }, 10);
-    
+
     const close = () => {
       modalOverlay.classList.remove('open');
       setTimeout(() => {
@@ -1818,7 +1818,7 @@ function showBookmarksImportExportModal(type, res) {
         resolve();
       }, 300);
     };
-    
+
     modalOverlay.querySelector('.bookmarks-success-btn').addEventListener('click', close);
   });
 }
