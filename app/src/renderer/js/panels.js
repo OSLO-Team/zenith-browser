@@ -837,6 +837,12 @@ function showBookmarksDropdown(folderId, triggerEl, isSubmenu = false) {
       });
     }
 
+    itemEl.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openBookmarkEditModal(b);
+    });
+
     setupDragDropListeners(itemEl, b);
     dropdown.appendChild(itemEl);
   });

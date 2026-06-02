@@ -25,7 +25,7 @@ const DEFAULT_SETTINGS = {
   httpsOnlyEnabled: false,
   httpsOnlyExceptions: '',
   customCss: '',
-  customCssEnabled: true,
+  customCssEnabled: false,
   theme: 'dark',
   accentColor: '#00ddff',
   compactMode: false,
@@ -82,8 +82,12 @@ const DEFAULT_SETTINGS = {
   sessionRestoreEnabled: false,
   savePasswordsEnabled: true,
   autofillEnabled: true,
+  performanceMode: 'balanced',
   sleepTabsEnabled: true,
   sleepTabsTimeout: 15,
+  backgroundTabThrottling: true,
+  keepPinnedTabsAwake: true,
+  keepAudioTabsAwake: true,
   downloadPromptEnabled: false,
   hardwareAutoOptimized: false
 };
@@ -633,6 +637,65 @@ function getManagedSessions(includeIncognito = false) {
   return Array.from(sessions);
 }
 
+function shouldThrottleBackgroundTabs() {
+  return settingsStore.get('backgroundTabThrottling') !== false;
+}
+
+function createTabWebPreferences(profileSession) {
+  return {
+    preload: path.join(__dirname, '../preload.js'),
+    contextIsolation: true,
+    nodeIntegration: false,
+    nodeIntegrationInSubFrames: true,
+    session: profileSession,
+    plugins: true,
+    backgroundThrottling: shouldThrottleBackgroundTabs()
+  };
+}
+
+function applyBackgroundTabThrottling() {
+  const allowed = shouldThrottleBackgroundTabs();
+  Object.values(tabs).forEach(tab => {
+    [tab.view, tab.splitView].forEach(view => {
+      const contents = view?.webContents;
+      if (!contents || contents.isDestroyed?.()) return;
+      if (typeof contents.setBackgroundThrottling === 'function') {
+        contents.setBackgroundThrottling(allowed);
+      }
+    });
+  });
+}
+
+const PERFORMANCE_MODE_PRESETS = {
+  balanced: {
+    sleepTabsEnabled: true,
+    sleepTabsTimeout: 15,
+    backgroundTabThrottling: true,
+    keepPinnedTabsAwake: true,
+    keepAudioTabsAwake: true,
+    reduceMotion: false,
+    transparencyEnabled: true
+  },
+  speed: {
+    sleepTabsEnabled: true,
+    sleepTabsTimeout: 60,
+    backgroundTabThrottling: false,
+    keepPinnedTabsAwake: true,
+    keepAudioTabsAwake: true,
+    reduceMotion: false,
+    transparencyEnabled: true
+  },
+  'memory-saver': {
+    sleepTabsEnabled: true,
+    sleepTabsTimeout: 5,
+    backgroundTabThrottling: true,
+    keepPinnedTabsAwake: true,
+    keepAudioTabsAwake: true,
+    reduceMotion: true,
+    transparencyEnabled: false
+  }
+};
+
 function getNetworkPrivacyOptions() {
   return {
     cookiePolicy: settingsStore.get('cookiePolicy') || 'block-third-party',
@@ -1036,7 +1099,8 @@ function setupViewListeners(tab, view, isSplitSide) {
             nodeIntegration: false,
             nodeIntegrationInSubFrames: true,
             session: wc.session,
-            plugins: true
+            plugins: true,
+            backgroundThrottling: shouldThrottleBackgroundTabs()
           }
         }
       };
@@ -1263,14 +1327,7 @@ function createTab(url, isIncognito = false, space = 'Genel', winId = null, tabI
   const viewSession = getSessionForSpace(space, isIncognito);
 
   const view = new WebContentsView({
-    webPreferences: {
-      preload: path.join(__dirname, '../preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      nodeIntegrationInSubFrames: true,
-      session: viewSession,
-      plugins: true
-    }
+    webPreferences: createTabWebPreferences(viewSession)
   });
 
   const lang = settingsStore.get('language') || 'tr';
@@ -1473,14 +1530,7 @@ function wakeTab(tabId) {
   const viewSession = getSessionForSpace(tab.space, tab.isIncognito);
 
   const view = new WebContentsView({
-    webPreferences: {
-      preload: path.join(__dirname, '../preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      nodeIntegrationInSubFrames: true,
-      session: viewSession,
-      plugins: true
-    }
+    webPreferences: createTabWebPreferences(viewSession)
   });
 
   tab.view = view;
@@ -2365,14 +2415,7 @@ ipcMain.on('tab-update-space', (event, { tabId, space }) => {
       oldView.webContents.close();
 
       const view = new WebContentsView({
-        webPreferences: {
-          preload: path.join(__dirname, '../preload.js'),
-          contextIsolation: true,
-          nodeIntegration: false,
-          nodeIntegrationInSubFrames: true,
-          session: getSessionForSpace(space, false),
-          plugins: true
-        }
+        webPreferences: createTabWebPreferences(getSessionForSpace(space, false))
       });
 
       tab.view = view;
@@ -2532,14 +2575,7 @@ ipcMain.on('tab-toggle-split', (event, tabId) => {
     // Turn split screen ON
     const viewSession = getSessionForSpace(tab.space, tab.isIncognito);
     const splitView = new WebContentsView({
-      webPreferences: {
-        preload: path.join(__dirname, '../preload.js'),
-        contextIsolation: true,
-        nodeIntegration: false,
-        nodeIntegrationInSubFrames: true,
-        session: viewSession,
-        plugins: true
-      }
+      webPreferences: createTabWebPreferences(viewSession)
     });
 
     tab.splitView = splitView;
@@ -3553,6 +3589,33 @@ ipcMain.handle('settings-get-all', (event) => {
   return settingsStore.data;
 });
 
+function broadcastSettingUpdate(key, value) {
+  const broadcastData = { key, value };
+  windows.forEach(win => {
+    sendToUI(win, 'ui-settings-updated', broadcastData);
+  });
+  Object.values(tabs).forEach(tab => {
+    if (tab.view && !tab.isSleeping && tab.view.webContents) {
+      tab.view.webContents.send('ui-settings-updated', broadcastData);
+    }
+  });
+}
+
+function applyPerformanceSideEffect(key, value) {
+  if (key === 'backgroundTabThrottling') {
+    applyBackgroundTabThrottling(value);
+  }
+}
+
+function applyPerformanceMode(mode) {
+  const preset = PERFORMANCE_MODE_PRESETS[mode] || PERFORMANCE_MODE_PRESETS.balanced;
+  Object.entries(preset).forEach(([presetKey, presetValue]) => {
+    settingsStore.set(presetKey, presetValue);
+    applyPerformanceSideEffect(presetKey, presetValue);
+    broadcastSettingUpdate(presetKey, presetValue);
+  });
+}
+
 function applySetting(key, value) {
   const networkPrivacyKeys = new Set([
     'cookiePolicy',
@@ -3593,18 +3656,13 @@ function applySetting(key, value) {
       sendToUI(tabWindow, 'ui-zoom-changed', { tabId: tab.id, zoom });
     });
     saveSession();
+  } else if (key === 'performanceMode') {
+    applyPerformanceMode(value);
+  } else if (key === 'backgroundTabThrottling') {
+    applyBackgroundTabThrottling(value);
   }
 
-  // Broadcast to main window and all active tabs
-  const broadcastData = { key, value };
-  windows.forEach(win => {
-    sendToUI(win, 'ui-settings-updated', broadcastData);
-  });
-  Object.values(tabs).forEach(tab => {
-    if (tab.view && !tab.isSleeping && tab.view.webContents) {
-      tab.view.webContents.send('ui-settings-updated', broadcastData);
-    }
-  });
+  broadcastSettingUpdate(key, value);
 }
 
 ipcMain.handle('settings-set', (event, { key, value }) => {
@@ -4222,6 +4280,8 @@ setInterval(() => {
   const now = Date.now();
   const sleepTimeoutMinutes = parseFloat(settingsStore.get('sleepTabsTimeout')) || 15;
   const sleepThreshold = sleepTimeoutMinutes * 60 * 1000;
+  const keepPinnedAwake = settingsStore.get('keepPinnedTabsAwake') !== false;
+  const keepAudioAwake = settingsStore.get('keepAudioTabsAwake') !== false;
 
   Object.keys(tabs).forEach(id => {
     const tab = tabs[id];
@@ -4230,6 +4290,8 @@ setInterval(() => {
     const win = BrowserWindow.fromWebContents(tab.view.webContents);
     const activeId = win ? activeTabs[win.id] : null;
     if (id === activeId || tab.isSleeping || tab.isLoading || tab.isIncognito) return;
+    if (keepPinnedAwake && tab.isPinned) return;
+    if (keepAudioAwake && tab.isPlayingAudio) return;
 
     if (now - tab.lastActive > sleepThreshold) {
       sleepTab(id);
@@ -4251,8 +4313,12 @@ function optimizePerformanceForHardware() {
 
   if (isOldHardware) {
     // Enable performance optimizations
+    settingsStore.set('performanceMode', 'memory-saver');
     settingsStore.set('sleepTabsEnabled', true);
-    settingsStore.set('sleepTabsTimeout', 15);
+    settingsStore.set('sleepTabsTimeout', 5);
+    settingsStore.set('backgroundTabThrottling', true);
+    settingsStore.set('keepPinnedTabsAwake', true);
+    settingsStore.set('keepAudioTabsAwake', true);
     settingsStore.set('reduceMotion', true);
     settingsStore.set('transparencyEnabled', false);
 

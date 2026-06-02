@@ -30,7 +30,7 @@ const appearanceDefaults = {
   reduceMotion: false,
   transparencyEnabled: true,
   customCss: '',
-  customCssEnabled: true,
+  customCssEnabled: false,
   newtabBackgroundType: 'default',
   newtabWallpaper: '',
   newtabBackgroundColor: '#0b0c0e',
@@ -66,6 +66,9 @@ const privacyCheckboxControls = {
   incognitoForgetDownloads: 'settings-incognito-forget-downloads',
   incognitoBlockThirdPartyCookies: 'settings-incognito-block-third-party-cookies',
   sleepTabsEnabled: 'settings-sleep-tabs-checkbox',
+  backgroundTabThrottling: 'settings-background-throttling',
+  keepPinnedTabsAwake: 'settings-keep-pinned-awake',
+  keepAudioTabsAwake: 'settings-keep-audio-awake',
   downloadPromptEnabled: 'settings-download-prompt-checkbox',
   telemetryEnabled: 'settings-telemetry-checkbox'
 };
@@ -81,6 +84,7 @@ const privacySelectControls = {
   permissionLocation: 'settings-permission-location',
   permissionClipboard: 'settings-permission-clipboard',
   permissionAutoplay: 'settings-permission-autoplay',
+  performanceMode: 'settings-performance-mode',
   sleepTabsTimeout: 'settings-sleep-tabs-timeout'
 };
 
@@ -362,15 +366,17 @@ export function applySettingChange(key, value) {
     const checkbox = document.getElementById(privacyCheckboxControls[key]);
     if (checkbox) checkbox.checked = !!value;
     if (key === 'sleepTabsEnabled') {
-      const container = document.getElementById('settings-sleep-tabs-timeout-row');
-      if (container) container.style.display = value ? 'flex' : 'none';
+      ['settings-sleep-tabs-timeout-row', 'settings-keep-pinned-awake-row', 'settings-keep-audio-awake-row'].forEach(id => {
+        const container = document.getElementById(id);
+        if (container) container.style.display = value ? 'flex' : 'none';
+      });
     }
     return;
   }
 
   if (privacySelectControls[key]) {
     const select = document.getElementById(privacySelectControls[key]);
-    if (select) select.value = value;
+    if (select) select.value = String(value);
     return;
   }
 
@@ -556,36 +562,121 @@ function showCustomCssStatus(messageKey) {
 
 function isWeakPassword(password) {
   const value = String(password || '');
-  if (value.length < 10) return true;
+  if (value.length < 12) return true;
   const hasLetter = /[a-zA-Z]/.test(value);
   const hasNumber = /\d/.test(value);
   const hasSymbol = /[^a-zA-Z0-9]/.test(value);
   return !(hasLetter && hasNumber && hasSymbol);
 }
 
-function generateStrongPassword(length = 20) {
-  const groups = [
-    'ABCDEFGHJKLMNPQRSTUVWXYZ',
-    'abcdefghijkmnopqrstuvwxyz',
-    '23456789',
-    '!@#$%^&*()-_=+[]{};:,.?'
-  ];
-  const allChars = groups.join('');
-  const values = new Uint32Array(length);
-  crypto.getRandomValues(values);
-  const chars = groups.map((group, idx) => group[values[idx] % group.length]);
-  for (let i = chars.length; i < length; i++) {
-    chars.push(allChars[values[i] % allChars.length]);
+const passwordCharacterSets = {
+  uppercase: {
+    full: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+    reduced: 'ABCDEFGHJKLMNPQRSTUVWXYZ'
+  },
+  lowercase: {
+    full: 'abcdefghijklmnopqrstuvwxyz',
+    reduced: 'abcdefghijkmnopqrstuvwxyz'
+  },
+  numbers: {
+    full: '0123456789',
+    reduced: '23456789'
+  },
+  symbols: {
+    full: '!@#$%^&*()-_=+[]{};:,.?/',
+    reduced: '!@#$%^&*()-_=+[]{};:,.?/'
   }
+};
+
+function getGeneratorOptions() {
+  const lengthControl = document.getElementById('password-generator-length');
+  const length = Math.max(16, Math.min(64, parseInt(lengthControl?.value, 10) || 28));
+  return {
+    length,
+    uppercase: document.getElementById('password-option-uppercase')?.checked !== false,
+    lowercase: document.getElementById('password-option-lowercase')?.checked !== false,
+    numbers: document.getElementById('password-option-numbers')?.checked !== false,
+    symbols: document.getElementById('password-option-symbols')?.checked !== false,
+    excludeAmbiguous: document.getElementById('password-option-ambiguous')?.checked !== false
+  };
+}
+
+function getActivePasswordGroups(options) {
+  const useSet = options.excludeAmbiguous ? 'reduced' : 'full';
+  const groups = [];
+  ['uppercase', 'lowercase', 'numbers', 'symbols'].forEach(key => {
+    if (options[key]) groups.push(passwordCharacterSets[key][useSet]);
+  });
+  return groups;
+}
+
+function randomIndex(max) {
+  if (!Number.isFinite(max) || max <= 0) return 0;
+  const value = new Uint32Array(1);
+  crypto.getRandomValues(value);
+  return value[0] % max;
+}
+
+function shuffleSecure(chars) {
   for (let i = chars.length - 1; i > 0; i--) {
-    const swap = values[i] % (i + 1);
+    const swap = randomIndex(i + 1);
     [chars[i], chars[swap]] = [chars[swap], chars[i]];
   }
-  return chars.join('');
+  return chars;
+}
+
+function estimateGeneratedPassword(password, charsetSize) {
+  const length = String(password || '').length;
+  const entropy = length * Math.log2(Math.max(1, charsetSize));
+  if (entropy >= 160) return { entropy, level: 'very-strong', score: 100 };
+  if (entropy >= 120) return { entropy, level: 'strong', score: 82 };
+  if (entropy >= 90) return { entropy, level: 'good', score: 64 };
+  return { entropy, level: 'medium', score: 44 };
+}
+
+function updateGeneratedPasswordStrength(password, charsetSize) {
+  const fill = document.getElementById('password-strength-fill');
+  const label = document.getElementById('password-strength-label');
+  const estimate = estimateGeneratedPassword(password, charsetSize);
+  const labelKey = `password-strength-${estimate.level}`;
+
+  if (fill) {
+    fill.style.width = `${estimate.score}%`;
+    fill.className = `password-strength-fill ${estimate.level}`;
+  }
+  if (label) {
+    label.textContent = getText(labelKey, estimate.level === 'very-strong' ? 'Çok güçlü' : 'Güçlü');
+  }
+}
+
+function generateStrongPassword(options = getGeneratorOptions()) {
+  let groups = getActivePasswordGroups(options);
+  if (groups.length === 0) {
+    ['password-option-uppercase', 'password-option-lowercase', 'password-option-numbers', 'password-option-symbols'].forEach(id => {
+      const control = document.getElementById(id);
+      if (control) control.checked = true;
+    });
+    groups = getActivePasswordGroups({ ...options, uppercase: true, lowercase: true, numbers: true, symbols: true });
+  }
+
+  const length = Math.max(options.length, groups.length);
+  const allChars = groups.join('');
+  const chars = groups.map(group => group[randomIndex(group.length)]);
+
+  while (chars.length < length) {
+    chars.push(allChars[randomIndex(allChars.length)]);
+  }
+
+  const password = shuffleSecure(chars).join('');
+  updateGeneratedPasswordStrength(password, allChars.length);
+  return password;
 }
 
 function setGeneratedPassword() {
   const output = document.getElementById('generated-password-output');
+  const lengthControl = document.getElementById('password-generator-length');
+  const lengthValue = document.getElementById('password-generator-length-value');
+  if (lengthControl && lengthValue) lengthValue.textContent = String(lengthControl.value || 28);
   if (output) output.value = generateStrongPassword();
 }
 
@@ -1080,7 +1171,8 @@ export function initSettings() {
     const control = document.getElementById(id);
     if (!control) return;
     control.addEventListener('change', () => {
-      window.oslo.setSetting(key, control.value);
+      const value = key === 'sleepTabsTimeout' ? parseFloat(control.value) : control.value;
+      window.oslo.setSetting(key, value);
     });
   };
 
@@ -1137,6 +1229,15 @@ export function initSettings() {
   updateDnsCustomProviderVisibility();
 
   document.getElementById('settings-audit-passwords')?.addEventListener('click', auditSavedPasswords);
+  document.getElementById('settings-audit-passwords-saved')?.addEventListener('click', auditSavedPasswords);
+  document.getElementById('saved-passwords-search')?.addEventListener('input', renderSavedPasswords);
+
+  ['password-generator-length', 'password-option-uppercase', 'password-option-lowercase', 'password-option-numbers', 'password-option-symbols', 'password-option-ambiguous'].forEach(id => {
+    const control = document.getElementById(id);
+    const eventName = control?.type === 'range' ? 'input' : 'change';
+    control?.addEventListener(eventName, setGeneratedPassword);
+  });
+
   document.getElementById('btn-generate-password')?.addEventListener('click', setGeneratedPassword);
   document.getElementById('btn-copy-generated-password')?.addEventListener('click', async () => {
     const output = document.getElementById('generated-password-output');
@@ -1144,11 +1245,11 @@ export function initSettings() {
     if (!value) return;
     try {
       await navigator.clipboard.writeText(value);
-      showCustomAlert(getText('password-generator-title', 'Güçlü Şifre Üretici'), getText('password-copy-success', 'Şifre panoya kopyalandı.'));
+      showCustomAlert(getText('password-generator-title', 'Şifre Üreticisi'), getText('password-copy-success', 'Şifre panoya kopyalandı.'));
     } catch (error) {
       output?.select();
       document.execCommand('copy');
-      showCustomAlert(getText('password-generator-title', 'Güçlü Şifre Üretici'), getText('password-copy-success', 'Şifre panoya kopyalandı.'));
+      showCustomAlert(getText('password-generator-title', 'Şifre Üreticisi'), getText('password-copy-success', 'Şifre panoya kopyalandı.'));
     }
   });
   setGeneratedPassword();
@@ -1509,29 +1610,68 @@ export function renderSavedPasswords() {
   container.innerHTML = '';
 
   window.oslo.getPasswords().then(passwords => {
-    if (!passwords || passwords.length === 0) {
+    const allPasswords = Array.isArray(passwords) ? passwords : [];
+    const query = (document.getElementById('saved-passwords-search')?.value || '').toLowerCase().trim();
+    const countEl = document.getElementById('saved-passwords-count');
+    const getHost = (originValue) => {
+      try {
+        return new URL(originValue).hostname.replace(/^www\./, '');
+      } catch (error) {
+        return String(originValue || '');
+      }
+    };
+    const filteredPasswords = allPasswords
+      .filter(cred => {
+        if (!query) return true;
+        return [cred.origin, getHost(cred.origin), cred.username].join(' ').toLowerCase().includes(query);
+      })
+      .sort((a, b) => getHost(a.origin).localeCompare(getHost(b.origin), undefined, { sensitivity: 'base' }));
+
+    if (countEl) countEl.textContent = query ? `${filteredPasswords.length}/${allPasswords.length}` : String(allPasswords.length);
+
+    if (allPasswords.length === 0) {
       const emptyMsg = translations[state.currentLang]['no-saved-passwords'] || 'Kayıtlı şifre bulunmuyor.';
       container.innerHTML = `<div class="passwords-empty">${emptyMsg}</div>`;
       return;
     }
 
-    passwords.forEach(cred => {
+    if (filteredPasswords.length === 0) {
+      const emptyMsg = translations[state.currentLang]['saved-passwords-no-results'] || 'Aramanızla eşleşen kayıt yok.';
+      container.innerHTML = `<div class="passwords-empty">${emptyMsg}</div>`;
+      return;
+    }
+
+    filteredPasswords.forEach(cred => {
       const row = document.createElement('div');
       row.className = 'password-row';
+      const host = getHost(cred.origin);
+      const strength = isWeakPassword(cred.password) ? 'weak' : 'strong';
+      const strengthText = strength === 'weak'
+        ? (translations[state.currentLang]['password-strength-weak'] || 'Zayıf')
+        : (translations[state.currentLang]['password-strength-strong'] || 'Güçlü');
+
+      const avatar = document.createElement('div');
+      avatar.className = 'password-site-avatar';
+      avatar.textContent = (host || '?').charAt(0).toUpperCase();
 
       const info = document.createElement('div');
       info.className = 'password-site-info';
 
       const origin = document.createElement('span');
       origin.className = 'password-origin';
-      origin.textContent = cred.origin;
+      origin.textContent = host || cred.origin;
 
       const username = document.createElement('span');
       username.className = 'password-username';
-      username.textContent = cred.username;
+      username.textContent = cred.username || '-';
+
+      const originDetail = document.createElement('span');
+      originDetail.className = 'password-origin-detail';
+      originDetail.textContent = cred.origin || '';
 
       info.appendChild(origin);
       info.appendChild(username);
+      info.appendChild(originDetail);
 
       const valContainer = document.createElement('div');
       valContainer.className = 'password-value-container';
@@ -1544,7 +1684,7 @@ export function renderSavedPasswords() {
 
       const toggleBtn = document.createElement('button');
       toggleBtn.className = 'password-action-btn toggle-visibility';
-      toggleBtn.title = state.currentLang === 'tr' ? 'Şifreyi Göster' : (state.currentLang === 'fr' ? 'Afficher le mot de passe' : 'Show Password');
+      toggleBtn.title = translations[state.currentLang]['password-show'] || 'Şifreyi Göster';
       toggleBtn.innerHTML = `
         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
           <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
@@ -1554,7 +1694,7 @@ export function renderSavedPasswords() {
       toggleBtn.addEventListener('click', () => {
         if (input.type === 'password') {
           input.type = 'text';
-          toggleBtn.title = state.currentLang === 'tr' ? 'Şifreyi Gizle' : (state.currentLang === 'fr' ? 'Masquer le mot de passe' : 'Hide Password');
+          toggleBtn.title = translations[state.currentLang]['password-hide'] || 'Şifreyi Gizle';
           toggleBtn.innerHTML = `
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
               <path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.82l2.92 2.92c1.51-1.39 2.7-3.14 3.44-5.12-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22l1.41-1.41L3.41 2.86 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-7.8l1.86 1.86c-.56-.17-1.14-.26-1.7-.26-2.76 0-5 2.24-5 5 0 .56.09 1.14.26 1.7L3.08 6.13C4.47 4.74 6.22 3.55 8.2 2.81c1.24-.45 2.58-.7 3.98-.7z"/>
@@ -1562,7 +1702,7 @@ export function renderSavedPasswords() {
           `;
         } else {
           input.type = 'password';
-          toggleBtn.title = state.currentLang === 'tr' ? 'Şifreyi Göster' : (state.currentLang === 'fr' ? 'Afficher le mot de passe' : 'Show Password');
+          toggleBtn.title = translations[state.currentLang]['password-show'] || 'Şifreyi Göster';
           toggleBtn.innerHTML = `
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
               <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
@@ -1574,9 +1714,37 @@ export function renderSavedPasswords() {
       valContainer.appendChild(input);
       valContainer.appendChild(toggleBtn);
 
+      const strengthBadge = document.createElement('span');
+      strengthBadge.className = `password-strength-badge ${strength}`;
+      strengthBadge.textContent = strengthText;
+
+      const copyUserBtn = document.createElement('button');
+      copyUserBtn.className = 'password-action-btn';
+      copyUserBtn.title = translations[state.currentLang]['password-copy-username'] || 'Kullanıcı adını kopyala';
+      copyUserBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+          <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+        </svg>
+      `;
+      copyUserBtn.addEventListener('click', async () => {
+        await navigator.clipboard.writeText(cred.username || '');
+      });
+
+      const copyPasswordBtn = document.createElement('button');
+      copyPasswordBtn.className = 'password-action-btn';
+      copyPasswordBtn.title = translations[state.currentLang]['password-copy-password'] || 'Şifreyi kopyala';
+      copyPasswordBtn.innerHTML = `
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+          <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+        </svg>
+      `;
+      copyPasswordBtn.addEventListener('click', async () => {
+        await navigator.clipboard.writeText(cred.password || '');
+      });
+
       const deleteBtn = document.createElement('button');
       deleteBtn.className = 'password-action-btn delete-btn';
-      deleteBtn.title = state.currentLang === 'tr' ? 'Sil' : (state.currentLang === 'fr' ? 'Supprimer' : 'Delete');
+      deleteBtn.title = translations[state.currentLang]['password-delete'] || 'Sil';
       deleteBtn.innerHTML = `
         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
           <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
@@ -1584,14 +1752,27 @@ export function renderSavedPasswords() {
       `;
 
       deleteBtn.addEventListener('click', () => {
-        window.oslo.deleteCredential(cred.id).then(() => {
-          renderSavedPasswords();
+        const title = translations[state.currentLang]['password-delete'] || 'Sil';
+        const template = translations[state.currentLang]['password-delete-confirm'] || '{site} için kayıtlı şifre silinsin mi?';
+        showCustomConfirm(title, template.replace('{site}', host || cred.origin || '')).then((confirmed) => {
+          if (!confirmed) return;
+          window.oslo.deleteCredential(cred.id).then(() => {
+            renderSavedPasswords();
+          });
         });
       });
 
+      const actions = document.createElement('div');
+      actions.className = 'password-row-actions';
+      actions.appendChild(copyUserBtn);
+      actions.appendChild(copyPasswordBtn);
+      actions.appendChild(deleteBtn);
+
+      row.appendChild(avatar);
       row.appendChild(info);
       row.appendChild(valContainer);
-      row.appendChild(deleteBtn);
+      row.appendChild(strengthBadge);
+      row.appendChild(actions);
 
       container.appendChild(row);
     });
@@ -1611,8 +1792,8 @@ export function loadAboutTabSystemInfo() {
     const valV8 = document.getElementById('sys-val-v8');
     const valUseragent = document.getElementById('sys-val-useragent');
 
-    if (versionDisplay) versionDisplay.textContent = info.appVersion || '1.0.0-beta.0';
-    if (versionDisplayMain) versionDisplayMain.textContent = info.appVersion || '1.0.0-beta.0';
+    if (versionDisplay) versionDisplay.textContent = info.appVersion || '1.0.0-beta.2';
+    if (versionDisplayMain) versionDisplayMain.textContent = info.appVersion || '1.0.0-beta.2';
     if (valElectron) valElectron.textContent = info.electron || '-';
     if (valChrome) valChrome.textContent = info.chrome || '-';
     if (valNode) valNode.textContent = info.node || '-';

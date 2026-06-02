@@ -1958,6 +1958,94 @@ const updateModal = document.getElementById('update-modal');
 const telemetryLogModal = document.getElementById('telemetry-log-modal');
 const getUpdateText = (key, fallback) => translations[state.currentLang]?.[key] || fallback;
 
+function setUpdateStatusMessage(message, { autoHide = false } = {}) {
+  const statusMsg = document.getElementById('update-status-message');
+  if (!statusMsg) return;
+  statusMsg.textContent = message;
+  statusMsg.style.display = 'block';
+  if (autoHide) {
+    setTimeout(() => {
+      statusMsg.style.display = 'none';
+    }, 3000);
+  }
+}
+
+function hideUpdateStatusMessage() {
+  const statusMsg = document.getElementById('update-status-message');
+  if (statusMsg) statusMsg.style.display = 'none';
+}
+
+function resetUpdateModalUi() {
+  const footer = updateModal?.querySelector('.modal-footer');
+  const confirmBtn = document.getElementById('btn-confirm-update');
+  const cancelBtn = document.getElementById('btn-cancel-update');
+  const closeBtn = document.getElementById('close-update-modal');
+  const progressContainer = document.getElementById('update-progress-container');
+  const installWarning = document.getElementById('update-install-warning');
+  const progressBar = document.getElementById('update-progress-bar');
+  const progressPercent = document.getElementById('update-progress-percent');
+  const currentVersionLabel = document.querySelector('.version-chip.current .version-label');
+  const latestVersionLabel = document.querySelector('.version-chip.latest .version-label');
+
+  if (footer) footer.style.display = 'flex';
+  updateModal?.classList.remove('release-notes-only');
+  if (confirmBtn) confirmBtn.style.display = '';
+  if (cancelBtn) {
+    cancelBtn.style.width = '';
+    cancelBtn.textContent = getUpdateText('modal-cancel', 'İptal');
+  }
+  if (closeBtn) closeBtn.style.display = 'block';
+  if (progressContainer) progressContainer.style.display = 'none';
+  if (installWarning) installWarning.style.display = 'none';
+  if (progressBar) progressBar.style.width = '0%';
+  if (progressPercent) progressPercent.textContent = '0%';
+  if (currentVersionLabel) currentVersionLabel.textContent = getUpdateText('current-version-label', 'Mevcut');
+  if (latestVersionLabel) latestVersionLabel.textContent = getUpdateText('latest-version-label', 'Yeni');
+}
+
+function showUpdateModal(info, { notesOnly = false } = {}) {
+  const currentVersion = document.getElementById('update-current-version');
+  const modalVersion = document.getElementById('update-modal-version');
+  const modalNotes = document.getElementById('update-modal-notes');
+  const modalTitle = document.getElementById('update-modal-title');
+  const confirmBtn = document.getElementById('btn-confirm-update');
+  const cancelBtn = document.getElementById('btn-cancel-update');
+  const releaseNotes = (info.releaseNotes || '').trim();
+
+  resetUpdateModalUi();
+  updateModal?.classList.toggle('release-notes-only', !!notesOnly);
+
+  if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.2'}`;
+  if (modalVersion) modalVersion.textContent = `v${info.latestVersion || info.currentVersion || '1.0.0-beta.2'}`;
+  if (modalNotes) {
+    modalNotes.innerHTML = releaseNotes
+      ? parseMarkdown(releaseNotes)
+      : `<p>${escapeHtml(getUpdateText('release-notes-empty', 'Bu sürüm için güncelleme notu bulunmuyor.'))}</p>`;
+  }
+
+  if (modalTitle) {
+    modalTitle.textContent = notesOnly
+      ? getUpdateText('release-notes-title', 'Güncelleme Notları')
+      : getUpdateText('update-available-title', 'Yeni Sürüm Mevcut!');
+  }
+
+  if (confirmBtn) confirmBtn.style.display = notesOnly ? 'none' : '';
+  if (cancelBtn) {
+    cancelBtn.style.width = notesOnly ? '100%' : '';
+    cancelBtn.textContent = notesOnly ? getUpdateText('modal-close', 'Kapat') : getUpdateText('modal-cancel', 'İptal');
+  }
+
+  updateModal?.classList.add('open');
+  sendBounds();
+
+  if (updateModal) {
+    updateModal.dataset.downloadUrl = notesOnly ? '' : (info.downloadUrl || '');
+    updateModal.dataset.checksum = notesOnly ? '' : (info.checksum || info.sha256 || info.expectedSha256 || '');
+    updateModal.dataset.checksumAlgorithm = notesOnly ? '' : (info.checksumAlgorithm || ((info.sha256 || info.expectedSha256) ? 'sha256' : ''));
+    updateModal.dataset.sha256 = notesOnly ? '' : (info.sha256 || '');
+  }
+}
+
 document.getElementById('btn-check-updates')?.addEventListener('click', () => {
   const statusMsg = document.getElementById('update-status-message');
   if (statusMsg) {
@@ -1974,9 +2062,13 @@ document.getElementById('btn-check-updates')?.addEventListener('click', () => {
       const modalVersion = document.getElementById('update-modal-version');
       const modalNotes = document.getElementById('update-modal-notes');
 
-      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.0'}`;
+      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.2'}`;
       if (modalVersion) modalVersion.textContent = `v${info.latestVersion}`;
       if (modalNotes) modalNotes.innerHTML = parseMarkdown(info.releaseNotes);
+
+      resetUpdateModalUi();
+      const modalTitle = document.getElementById('update-modal-title');
+      if (modalTitle) modalTitle.textContent = getUpdateText('update-available-title', 'Yeni Sürüm Mevcut!');
 
       updateModal?.classList.add('open');
       sendBounds();
@@ -2005,6 +2097,22 @@ document.getElementById('btn-check-updates')?.addEventListener('click', () => {
   });
 });
 
+document.getElementById('btn-read-release-notes')?.addEventListener('click', () => {
+  setUpdateStatusMessage(getUpdateText('release-notes-loading', 'Güncelleme notları alınıyor...'));
+
+  window.oslo.checkForUpdates().then(info => {
+    hideUpdateStatusMessage();
+    if (info?.error) {
+      setUpdateStatusMessage(getUpdateText('release-notes-error', 'Güncelleme notları alınamadı.'), { autoHide: true });
+      return;
+    }
+    showUpdateModal(info, { notesOnly: true });
+  }).catch(err => {
+    console.error('Release notes fetch failed:', err);
+    setUpdateStatusMessage(getUpdateText('release-notes-error', 'Güncelleme notları alınamadı.'), { autoHide: true });
+  });
+});
+
 // Close update modal
 const closeUpdateModalFunc = () => {
   updateModal?.classList.remove('open');
@@ -2017,7 +2125,7 @@ document.getElementById('btn-confirm-update')?.addEventListener('click', () => {
   const url = updateModal?.dataset.downloadUrl;
   const checksum = updateModal?.dataset.checksum || updateModal?.dataset.sha256 || '';
   const checksumAlgorithm = updateModal?.dataset.checksumAlgorithm || (checksum.length === 128 ? 'sha512' : 'sha256');
-  const version = (document.getElementById('update-modal-version')?.textContent || '1.0.0-beta.0').replace(/^v/, '');
+  const version = (document.getElementById('update-modal-version')?.textContent || '1.0.0-beta.2').replace(/^v/, '');
 
   if (!url) {
     window.oslo.openExternalLink('https://oslobrowser.com/download');
@@ -2104,9 +2212,13 @@ function autoCheckForUpdates() {
       const modalVersion = document.getElementById('update-modal-version');
       const modalNotes = document.getElementById('update-modal-notes');
 
-      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.0'}`;
+      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.2'}`;
       if (modalVersion) modalVersion.textContent = `v${info.latestVersion}`;
       if (modalNotes) modalNotes.innerHTML = parseMarkdown(info.releaseNotes);
+
+      resetUpdateModalUi();
+      const modalTitle = document.getElementById('update-modal-title');
+      if (modalTitle) modalTitle.textContent = getUpdateText('update-available-title', 'Yeni Sürüm Mevcut!');
 
       updateModal?.classList.add('open');
       sendBounds();
@@ -2150,7 +2262,7 @@ function buildTelemetryReport(logs, systemInfo = {}, options = {}) {
   const allCrashes = getTelemetryArray(logs, 'crashes');
   const payload = {
     generatedAt: new Date().toISOString(),
-    appVersion: systemInfo?.appVersion || '1.0.0-beta.0',
+    appVersion: systemInfo?.appVersion || '1.0.0-beta.2',
     electron: systemInfo?.electron || '',
     chrome: systemInfo?.chrome || '',
     platform: navigator.platform || '',
@@ -2176,7 +2288,7 @@ function buildTelemetryIssueBody(logs, systemInfo = {}, copiedToClipboard = fals
   return [
     '## OSLO Browser Telemetry Report',
     '',
-    `Version: ${systemInfo?.appVersion || '1.0.0-beta.0'}`,
+    `Version: ${systemInfo?.appVersion || '1.0.0-beta.2'}`,
     `Generated at: ${new Date().toISOString()}`,
     `Events: ${allEvents.length}`,
     `Crashes/errors: ${allCrashes.length}`,

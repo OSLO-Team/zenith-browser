@@ -1027,7 +1027,9 @@ const allowedSettings = new Set([
   'incognitoForgetDownloads', 'incognitoBlockThirdPartyCookies', 'permissionNotifications',
   'permissionCamera', 'permissionMicrophone', 'permissionLocation', 'permissionClipboard',
   'permissionAutoplay', 'globalPrivacyControl', 'sessionRestoreEnabled', 'savePasswordsEnabled',
-  'autofillEnabled', 'sleepTabsEnabled', 'sleepTabsTimeout', 'downloadPromptEnabled'
+  'autofillEnabled', 'sleepTabsEnabled', 'sleepTabsTimeout', 'performanceMode',
+  'backgroundTabThrottling', 'keepPinnedTabsAwake', 'keepAudioTabsAwake',
+  'downloadPromptEnabled'
 ]);
 
 function asString(value, maxLength = 4096) {
