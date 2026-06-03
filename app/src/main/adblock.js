@@ -73,7 +73,7 @@ function initializeBlocker() {
       console.error('[Adblock] Failed to initialize Ghostery blocker:', e);
       try {
         blockerInstance = await ElectronBlocker.empty();
-      } catch (err) {}
+      } catch (err) { }
     }
   })();
 
@@ -172,8 +172,8 @@ function isGoogleAuthUrl(value) {
   ];
 
   if (isGoogleTldHost(hostname, 'accounts') || isGoogleTldHost(hostname, 'myaccount') ||
-      authHosts.some(host => hostname === host || hostname.endsWith('.' + host)) ||
-      hostname === 'googleusercontent.com' || hostname.endsWith('.googleusercontent.com')) {
+    authHosts.some(host => hostname === host || hostname.endsWith('.' + host)) ||
+    hostname === 'googleusercontent.com' || hostname.endsWith('.googleusercontent.com')) {
     return true;
   }
 
@@ -273,32 +273,61 @@ function convertResourceType(electronType) {
 function isVideoProvider(host) {
   if (!host) return false;
   const lowerHost = host.toLowerCase();
-  return lowerHost.includes('closeload') || 
-         lowerHost.includes('vidmoly') ||
-         lowerHost.includes('mixdrop') || 
-         lowerHost.includes('upstream') ||
-         lowerHost.includes('fembed') || 
-         lowerHost.includes('ok.ru') ||
-         lowerHost.includes('vk.com') || 
-         lowerHost.includes('mail.ru') ||
-         lowerHost.includes('vimeo.com') || 
-         lowerHost.includes('dailymotion.com') ||
-         lowerHost.includes('rutube') ||
-         lowerHost.includes('rapidvideo') ||
-         lowerHost.includes('openload') ||
-         lowerHost.includes('streamtape') ||
-         lowerHost.includes('doodstream') ||
-         lowerHost.includes('dood.') ||
-         lowerHost.includes('voe.sx') ||
-         lowerHost.includes('voe-player') ||
-         lowerHost.includes('waaw') ||
-         lowerHost.includes('vidoza') ||
-         lowerHost.includes('supervideo') ||
-         lowerHost.includes('turbovid');
+  return lowerHost.includes('closeload') ||
+    lowerHost.includes('vidmoly') ||
+    lowerHost.includes('mixdrop') ||
+    lowerHost.includes('upstream') ||
+    lowerHost.includes('fembed') ||
+    lowerHost.includes('ok.ru') ||
+    lowerHost.includes('vk.com') ||
+    lowerHost.includes('mail.ru') ||
+    lowerHost.includes('vimeo.com') ||
+    lowerHost.includes('dailymotion.com') ||
+    lowerHost.includes('rutube') ||
+    lowerHost.includes('rapidvideo') ||
+    lowerHost.includes('openload') ||
+    lowerHost.includes('streamtape') ||
+    lowerHost.includes('doodstream') ||
+    lowerHost.includes('dood.') ||
+    lowerHost.includes('voe.sx') ||
+    lowerHost.includes('voe-player') ||
+    lowerHost.includes('waaw') ||
+    lowerHost.includes('vidoza') ||
+    lowerHost.includes('supervideo') ||
+    lowerHost.includes('turbovid');
 }
 
 function isGoogleAuth(urlStr, initiatorStr) {
   return isGoogleAuthUrl(urlStr) || isGoogleAuthUrl(initiatorStr);
+}
+
+function getHeaderValue(headers, name) {
+  const target = String(name || '').toLowerCase();
+  const entry = Object.entries(headers || {}).find(([key]) => key.toLowerCase() === target);
+  return entry ? String(entry[1] || '') : '';
+}
+
+function getChromeVersionsFromHeaders(headers) {
+  const ua = getHeaderValue(headers, 'user-agent');
+  const secChUa = getHeaderValue(headers, 'sec-ch-ua');
+  const secChFullVersionList = getHeaderValue(headers, 'sec-ch-ua-full-version-list');
+  const uaVersion = ua.match(/(?:Chrome|Chromium)\/([0-9.]+)/i)?.[1] || '';
+  const secMajor = secChUa.match(/"Chromium";v="(\d+)"/i)?.[1] ||
+    secChUa.match(/"Google Chrome";v="(\d+)"/i)?.[1] || '';
+  const secFull = secChFullVersionList.match(/"Chromium";v="([^"]+)"/i)?.[1] ||
+    secChFullVersionList.match(/"Google Chrome";v="([^"]+)"/i)?.[1] || '';
+  const full = secFull || uaVersion || '148.0.0.0';
+  const major = secMajor || full.split('.')[0] || '148';
+  const paddedFull = full.includes('.') ? full : `${major}.0.0.0`;
+  return { major, full: paddedFull };
+}
+
+function buildChromeClientHintHeaders(headers) {
+  const { major, full } = getChromeVersionsFromHeaders(headers);
+  return {
+    brands: `"Google Chrome";v="${major}", "Chromium";v="${major}", "Not-A.Brand";v="24"`,
+    fullVersionList: `"Google Chrome";v="${full}", "Chromium";v="${full}", "Not-A.Brand";v="24.0.0.0"`
+  };
 }
 
 // ─── MAIN BLOCKING DECISION ─────────────────────────────────────────────────────
@@ -313,8 +342,8 @@ function shouldBlock(url, resourceType, initiator, referrer) {
 
     // Bypass local protocols
     if (lowerUrl.startsWith('oslo://') || lowerUrl.startsWith('file://') ||
-        lowerUrl.startsWith('chrome://') || lowerUrl.startsWith('devtools://') ||
-        lowerUrl.startsWith('chrome-extension://') || lowerUrl.startsWith('about:')) {
+      lowerUrl.startsWith('chrome://') || lowerUrl.startsWith('devtools://') ||
+      lowerUrl.startsWith('chrome-extension://') || lowerUrl.startsWith('about:')) {
       return false;
     }
 
@@ -447,16 +476,12 @@ function setupTrackingHeaderStripping(sessionInstance, sessionKind = 'default') 
           // Rewrite sec-ch-ua headers to include "Google Chrome" brand.
           // Electron/Chromium omits it, which some sites use to reject sign-in.
           if (lowerKey === 'sec-ch-ua') {
-            const match = String(value).match(/"Chromium";v="(\d+)"/);
-            const ver = match ? match[1] : '148';
-            newHeaders[key] = `"Google Chrome";v="${ver}", "Chromium";v="${ver}", "Not-A.Brand";v="24"`;
+            newHeaders[key] = buildChromeClientHintHeaders(details.requestHeaders).brands;
             modified = true;
             continue;
           }
           if (lowerKey === 'sec-ch-ua-full-version-list') {
-            const match = String(value).match(/"Chromium";v="([^"]+)"/);
-            const ver = match ? match[1] : '148.0.0.0';
-            newHeaders[key] = `"Google Chrome";v="${ver}", "Chromium";v="${ver}", "Not-A.Brand";v="24.0.0.0"`;
+            newHeaders[key] = buildChromeClientHintHeaders(details.requestHeaders).fullVersionList;
             modified = true;
             continue;
           }
@@ -488,8 +513,8 @@ function setupTrackingHeaderStripping(sessionInstance, sessionKind = 'default') 
           }
 
           if ((privacyOptions.trackingProtectionLevel !== 'off' || adBlockEnabled) &&
-              isThirdParty && isTracker &&
-              lowerKey === 'x-client-data') {
+            isThirdParty && isTracker &&
+            lowerKey === 'x-client-data') {
             modified = true;
             continue;
           }
@@ -560,8 +585,8 @@ function setupResponseHeaderManipulation(sessionInstance, sessionKind = 'default
 
           // Remove CSP headers on YouTube to allow preload script main-world insertions
           if (isYouTube && (lowerKey === 'content-security-policy' ||
-              lowerKey === 'content-security-policy-report-only' ||
-              lowerKey === 'x-content-security-policy')) {
+            lowerKey === 'content-security-policy-report-only' ||
+            lowerKey === 'x-content-security-policy')) {
             modified = true;
             continue;
           }
@@ -615,13 +640,13 @@ function setupAdBlocker(sessionInstance, sessionKind = 'default') {
             callback({ redirectURL: details.url.replace('http://', 'https://') });
             return;
           }
-        } catch (e) {}
+        } catch (e) { }
       }
 
       // 2. AdBlocking
       if (shouldBlock(details.url, details.resourceType, details.initiator, details.referrer)) {
         if (onBlockCallback) {
-          onBlockCallback(details.url);
+          onBlockCallback(details.url, details);
         }
         callback({ cancel: true });
       } else {

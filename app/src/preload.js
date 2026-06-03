@@ -18,12 +18,33 @@ function isGoogleSensitiveHost(hostname) {
     host === 'recaptcha.net' || host.endsWith('.recaptcha.net');
 }
 
+function isGoogleAuthHost(hostname) {
+  const host = String(hostname || '').toLowerCase();
+  return /^(accounts|myaccount)\.google\.[a-z]{2,3}(\.[a-z]{2})?$/.test(host) ||
+    host === 'accounts.youtube.com' ||
+    host === 'apis.google.com' ||
+    host === 'oauth2.googleapis.com' ||
+    host === 'oauthaccountmanager.googleapis.com' ||
+    host === 'accounts.gstatic.com';
+}
+
+function getChromeVersionInfo() {
+  const full = (navigator.userAgent.match(/(?:Chrome|Chromium)\/([0-9.]+)/) || ['', '148.0.0.0'])[1];
+  const major = full.split('.')[0] || '148';
+  return {
+    major,
+    full: full.includes('.') ? full : `${major}.0.0.0`
+  };
+}
+
 try {
-  if (!isGoogleSensitiveHost(getPageHostname())) {
-    const chromeVer = (navigator.userAgent.match(/Chrome\/(\d+)/) || ['', '148'])[1];
+  const pageHostname = getPageHostname();
+  if (!isGoogleSensitiveHost(pageHostname)) {
+    const chromeVersion = getChromeVersionInfo();
     const scriptContent = `
       try {
-        const ver = '${chromeVer}';
+        const ver = '${chromeVersion.major}';
+        const fullVer = '${chromeVersion.full}';
         const brands = [
           { brand: "Google Chrome", version: ver },
           { brand: "Chromium", version: ver },
@@ -40,9 +61,15 @@ try {
               platform: "Windows",
               platformVersion: "15.0.0",
               architecture: "x86",
+              bitness: "64",
               model: "",
-              uaFullVersion: ver + ".0.0.0",
-              fullVersionList: brands.map(function(b) { return { brand: b.brand, version: b.version + ".0.0.0" }; })
+              uaFullVersion: fullVer,
+              fullVersionList: brands.map(function(b) {
+                return {
+                  brand: b.brand,
+                  version: b.brand === "Not-A.Brand" ? "24.0.0.0" : fullVer
+                };
+              })
             });
           },
           toJSON: function() {
@@ -947,7 +974,7 @@ function runPasswordManager() {
 
 // ─── INITIAL LIFECYCLE EXECUTION ───────────────────────────────────────────────
 if (window.location.protocol === 'http:' || window.location.protocol === 'https:' || window.location.protocol === 'file:') {
-  if (window === window.top) {
+  if (window === window.top && !isGoogleAuthHost(getPageHostname())) {
     runPasswordManager();
   }
 
@@ -1181,8 +1208,17 @@ const osloApi = {
   pauseDownload: (id) => safeSend('download-pause', (value) => Number.isFinite(Number(value)), id),
   resumeDownload: (id) => safeSend('download-resume', (value) => Number.isFinite(Number(value)), id),
   cancelDownload: (id) => safeSend('download-cancel', (value) => Number.isFinite(Number(value)), id),
+  retryDownload: (id) => safeSend('download-retry', (value) => Number.isFinite(Number(value)), id),
+  verifyDownloadHash: (id, expectedHash = '') => safeInvoke('download-verify-hash', (value) => {
+    const hashText = String(value?.expectedHash || '').trim();
+    return value &&
+      Number.isFinite(Number(value.id)) &&
+      (hashText === '' || /^(sha-?256[:=\s]+)?[a-f0-9:\s=-]{32,200}$/i.test(hashText));
+  }, { id, expectedHash }),
   getDownloads: () => ipcRenderer.invoke('downloads-get'),
   clearDownloads: () => ipcRenderer.invoke('downloads-clear'),
+  getTaskManagerTabs: () => ipcRenderer.invoke('task-manager-tabs-get'),
+  getTaskManagerTab: (tabId) => safeInvoke('task-manager-tab-get', asTabId, tabId),
 
   // Spaces control
   getSpaces: () => ipcRenderer.invoke('spaces-get'),
@@ -1296,6 +1332,9 @@ const osloApi = {
   },
   getSiteData: () => ipcRenderer.invoke('site-data-get'),
   clearSiteData: (domain) => safeInvoke('site-data-clear', (value) => !!asString(value, 253), domain),
+  getSiteSecuritySummary: (tabId, url) => safeInvoke('site-security-summary-get', (value) => {
+    return value && asTabId(value.tabId) && asString(value.url || '', 4096) !== null;
+  }, { tabId, url: String(url || '').slice(0, 4096) }),
   getCertificateExceptions: () => ipcRenderer.invoke('certificate-exceptions-get'),
   deleteCertificateException: (host) => safeInvoke('certificate-exceptions-delete', (value) => !!asString(value, 253), host),
   clearCertificateExceptions: () => ipcRenderer.invoke('certificate-exceptions-clear'),

@@ -1223,6 +1223,13 @@ export function renderDownloads() {
 
     const openBtnText = translations[state.currentLang]['open-file'] || 'Dosyayı Aç';
 
+    const retryBtnText = translations[state.currentLang]['download-retry'] || 'Yeniden Dene';
+    const verifyBtnText = translations[state.currentLang]['download-verify-hash'] || 'Hash Doğrula';
+    const expectedHashPlaceholder = translations[state.currentLang]['download-expected-hash'] || 'Beklenen SHA-256';
+    const highRiskText = translations[state.currentLang]['download-risk-high'] || 'Riskli dosya';
+    const securityReport = d.securityReport || {};
+    const showSecurityReport = securityReport.risk === 'high';
+
     let actionButtonsHtml = '';
     if (d.status === 'progressing') {
       actionButtonsHtml = `
@@ -1242,9 +1249,28 @@ export function renderDownloads() {
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
         </button>
       `;
+    } else if ((d.status === 'failed' || d.status === 'interrupted' || d.status === 'cancelled') && d.canRetry && d.url) {
+      actionButtonsHtml = `<button class="download-card-btn retry-btn">${escapeHtml(retryBtnText)}</button>`;
     }
 
     const percentage = d.progress !== undefined ? d.progress : 0;
+    const speedText = d.status === 'progressing' && d.speedBps ? `${formatBytes(d.speedBps)}/s` : '';
+    const etaText = d.status === 'progressing' && Number.isFinite(Number(d.etaSeconds))
+      ? `${translations[state.currentLang]['download-eta'] || 'Kalan'}: ${formatDuration(d.etaSeconds)}`
+      : '';
+    const hashText = d.hash ? `${String(d.hash).slice(0, 16)}...` : getHashStatusText(d.hashStatus);
+    const securityReportHtml = showSecurityReport ? `
+          <div class="download-security-report">
+            <strong>${escapeHtml(highRiskText)} .${escapeHtml(securityReport.extension || ext)}</strong>
+            <span>${escapeHtml((securityReport.reasons || []).join(' '))}</span>
+            <span>${escapeHtml(securityReport.recommendation || '')}</span>
+          </div>` : '';
+    const hashRowHtml = d.status === 'completed' ? `
+          <div class="download-hash-row">
+            <span class="download-hash-status ${escapeAttribute(d.hashStatus || '')}">SHA-256: ${escapeHtml(hashText || '-')}</span>
+            <input class="download-hash-input" type="text" spellcheck="false" value="${escapeAttribute(d.expectedHash || '')}" placeholder="${escapeAttribute(expectedHashPlaceholder)}">
+            <button class="download-card-btn verify-hash-btn">${escapeHtml(verifyBtnText)}</button>
+          </div>` : '';
 
     card.innerHTML = `
       <div class="download-file-type-icon ${iconClass}">
@@ -1269,6 +1295,8 @@ export function renderDownloads() {
         ? `<span>${formatBytes(d.received)} / ${formatBytes(d.total)}</span>`
         : (d.total !== undefined ? `<span>${formatBytes(d.total)}</span>` : '')
       }
+            ${speedText ? `<span style="color: var(--text-muted); font-size: 11px;">• ${escapeHtml(speedText)}</span>` : ''}
+            ${etaText ? `<span style="color: var(--text-muted); font-size: 11px;">• ${escapeHtml(etaText)}</span>` : ''}
             ${d.status === 'completed' && d.timestamp
         ? `<span style="color: var(--text-muted); font-size: 11px;">• ${new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(d.timestamp))}</span>`
         : ''
@@ -1277,11 +1305,13 @@ export function renderDownloads() {
           
           <div class="download-card-actions">
             ${d.status === 'completed'
-        ? `<button class="download-card-btn accent download-open-btn">${openBtnText}</button>`
+        ? `<button class="download-card-btn accent download-open-btn">${escapeHtml(openBtnText)}</button>`
         : actionButtonsHtml
       }
           </div>
         </div>
+        ${securityReportHtml}
+        ${hashRowHtml}
       </div>
     `;
 
@@ -1311,6 +1341,37 @@ export function renderDownloads() {
           window.oslo.cancelDownload(d.id);
         });
       }
+      const retryBtn = card.querySelector('.retry-btn');
+      if (retryBtn) {
+        retryBtn.addEventListener('click', () => {
+          window.oslo.retryDownload(d.id);
+        });
+      }
+    }
+
+    const verifyHashBtn = card.querySelector('.verify-hash-btn');
+    if (verifyHashBtn) {
+      verifyHashBtn.addEventListener('click', async () => {
+        const input = card.querySelector('.download-hash-input');
+        const expectedHash = input?.value || '';
+        verifyHashBtn.disabled = true;
+        try {
+          const result = await window.oslo.verifyDownloadHash(d.id, expectedHash);
+          state.downloads[d.id] = {
+            ...state.downloads[d.id],
+            hash: result?.hash || state.downloads[d.id]?.hash,
+            expectedHash,
+            hashStatus: result?.status || (result?.matches ? 'verified' : 'ready')
+          };
+        } catch (error) {
+          state.downloads[d.id] = {
+            ...state.downloads[d.id],
+            expectedHash,
+            hashStatus: 'failed'
+          };
+        }
+        renderDownloads();
+      });
     }
 
     downloadsList.appendChild(card);
@@ -1324,9 +1385,25 @@ export function getDownloadStatusText(status) {
 
 export function formatBytes(bytes, decimals = 1) {
   if (bytes === 0) return '0 B';
+  if (!Number.isFinite(Number(bytes))) return '-';
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
+function formatDuration(seconds) {
+  const value = Math.max(0, Math.round(Number(seconds) || 0));
+  if (value < 60) return `${value}s`;
+  const minutes = Math.floor(value / 60);
+  const remainingSeconds = value % 60;
+  if (minutes < 60) return `${minutes}m ${remainingSeconds}s`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}m`;
+}
+
+function getHashStatusText(status) {
+  const key = `download-hash-${status || 'pending'}`;
+  return translations[state.currentLang]?.[key] || status || '-';
 }

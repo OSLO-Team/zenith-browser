@@ -68,7 +68,8 @@
             <!-- Spaces pills/circles will be rendered dynamically -->
           </div>
         </div>
-        <button id="add-space-btn" class="space-add-btn" title="Yeni Çalışma Alanı Ekle">
+        <button id="add-space-btn" class="space-add-btn" title="Yeni Çalışma Alanı Ekle"
+          data-i18n-title="add-space-title">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
             <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
           </svg>
@@ -142,7 +143,8 @@
               <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" fill="currentColor" />
             </svg>
           </button>
-          <button id="nav-split" class="nav-btn" title="Bölünmüş Ekran (Ctrl + \)">
+          <button id="nav-split" class="nav-btn" title="Bölünmüş Ekran (Ctrl + \)"
+            data-i18n-title="split-screen-title">
             <svg viewBox="0 0 24 24" width="18" height="18">
               <path
                 d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zm0 2v12h7V6H4zm9 0v12h7V6h-7z"
@@ -170,6 +172,7 @@
               autocomplete="off">
             <div class="address-bar-actions">
               <button id="zoom-indicator-btn" class="address-action-btn zoom-btn" style="display: none;"
+                data-i18n-title="zoom-reset-title"
                 title="Yakınlaştırmayı Sıfırla">
                 <span id="zoom-value-text" style="font-size: 10px; font-weight: 600; padding: 0 4px;">100%</span>
               </button>
@@ -234,16 +237,17 @@
       <!-- Find In Page Bar (hidden by default) -->
       <div id="find-bar" class="find-bar" style="display: none;">
         <div class="find-bar-search">
-          <input type="text" id="find-input" placeholder="Sayfada ara..." autocomplete="off" spellcheck="false">
+          <input type="text" id="find-input" data-i18n-placeholder="find-placeholder" placeholder="Sayfada ara..."
+            autocomplete="off" spellcheck="false">
           <span id="find-results-count">0/0</span>
         </div>
         <div class="find-bar-controls">
-          <button id="find-prev" class="find-btn" title="Önceki">
+          <button id="find-prev" class="find-btn" title="Önceki" data-i18n-title="find-prev-title">
             <svg viewBox="0 0 24 24" width="14" height="14">
               <path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z" fill="currentColor" />
             </svg>
           </button>
-          <button id="find-next" class="find-btn" title="Sonraki">
+          <button id="find-next" class="find-btn" title="Sonraki" data-i18n-title="find-next-title">
             <svg viewBox="0 0 24 24" width="14" height="14">
               <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z" fill="currentColor" />
             </svg>
@@ -275,6 +279,7 @@
         <input type="text" id="bookmarks-search-input" data-i18n-placeholder="search-bookmarks-placeholder"
           placeholder="Yer imlerinde ara..." autocomplete="off" style="flex: 1; min-width: 0;">
         <button id="add-folder-btn" class="panel-header-action-btn" title="Yeni Klasör Oluştur"
+          data-i18n-title="add-folder-title"
           style="background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-main); cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; border-radius: 8px; height: 32px; width: 32px; transition: all 0.2s;">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
             <path
@@ -420,6 +425,13 @@
               </svg>
               <span data-i18n="appearance">Görünüm</span>
             </button>
+            <button class="settings-nav-item" data-settings-tab="ram">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                <path
+                  d="M7 2h2v3h2V2h2v3h2V2h2v3h1.5C19.88 5 21 6.12 21 7.5V9h3v2h-3v2h3v2h-3v1.5c0 1.38-1.12 2.5-2.5 2.5H17v3h-2v-3h-2v3h-2v-3H9v3H7v-3H5.5C4.12 19 3 17.88 3 16.5V15H0v-2h3v-2H0V9h3V7.5C3 6.12 4.12 5 5.5 5H7V2zm-1.5 7.5v5c0 .83.67 1.5 1.5 1.5h10c.83 0 1.5-.67 1.5-1.5v-5c0-.83-.67-1.5-1.5-1.5H7c-.83 0-1.5.67-1.5 1.5z" />
+              </svg>
+              <span data-i18n="ram-settings">Kaynak İzleyici</span>
+            </button>
             <button class="settings-nav-item" data-settings-tab="passwords">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
                 <path
@@ -437,7 +449,7 @@
             </button>
           </div>
           <div class="settings-nav-footer">
-            <span class="settings-nav-version">OSLO v<span id="about-version-display">1.0.0-beta.2</span></span>
+            <span class="settings-nav-version">OSLO v<span id="about-version-display">1.0.0-beta.3</span></span>
           </div>
         </nav>
 
@@ -456,7 +468,7 @@
               <div class="settings-card-row">
                 <div class="settings-card-info">
                   <span class="settings-card-label" data-i18n="search-engine-desc">Adres çubuğundan arama yaparken
-                    kullanılacak motorunu seçin.</span>
+                    kullanılacak motoru seçin.</span>
                 </div>
                 <select id="settings-search-engine" class="settings-select">
                   <option value="duckduckgo">DuckDuckGo</option>
@@ -634,6 +646,124 @@
                   <span data-i18n="reset-all-settings">Fabrika Ayarlarına Sıfırla</span>
                 </button>
               </div>
+            </div>
+          </div>
+
+          <div class="settings-tab-content" id="settings-tab-ram">
+            <div class="settings-page-header">
+              <h3 data-i18n="ram-settings">Kaynak İzleyici</h3>
+              <p class="settings-page-desc" data-i18n="ram-settings-desc">Sekme kaynak kullanımını, yüksek tüketim durumunu ve otomatik güncellenen performans özetlerini izleyin.</p>
+            </div>
+
+            <div class="settings-card" id="task-manager-settings-card">
+              <div class="settings-card-header">
+                <div>
+                  <div class="settings-card-title" data-i18n="task-manager-title">OSLO Görev Yöneticisi</div>
+                  <p class="settings-page-desc" data-i18n="task-manager-desc"
+                    style="margin: 6px 0 0; font-size: 12px;">Sekmelerin RAM, CPU ve çalışma durumunu izleyin.</p>
+                </div>
+                <div class="task-manager-auto-refresh">
+                  <span data-i18n="task-manager-auto-refresh">10 saniyede bir otomatik güncellenir</span>
+                  <strong id="task-manager-countdown">10s</strong>
+                </div>
+              </div>
+              <div class="task-manager-controls">
+                <label class="task-manager-control">
+                  <span data-i18n="task-manager-filter-label">Filtre</span>
+                  <select id="task-manager-filter" class="settings-select">
+                    <option value="all" data-i18n="task-manager-filter-all">Tümü</option>
+                    <option value="attention" data-i18n="task-manager-filter-attention">Yüksek kullanım</option>
+                    <option value="active" data-i18n="task-manager-filter-active">Aktif</option>
+                    <option value="sleeping" data-i18n="task-manager-filter-sleeping">Uykuda</option>
+                    <option value="audio" data-i18n="task-manager-filter-audio">Ses çalan</option>
+                    <option value="pinned" data-i18n="task-manager-filter-pinned">Sabitlenmiş</option>
+                  </select>
+                </label>
+                <label class="task-manager-control">
+                  <span data-i18n="task-manager-sort-label">Sırala</span>
+                  <select id="task-manager-sort" class="settings-select">
+                    <option value="resource" data-i18n="task-manager-sort-resource">Kaynak yükü</option>
+                    <option value="memory" data-i18n="task-manager-sort-memory">RAM</option>
+                    <option value="cpu" data-i18n="task-manager-sort-cpu">CPU</option>
+                    <option value="activity" data-i18n="task-manager-sort-activity">Son aktivite</option>
+                    <option value="title" data-i18n="task-manager-sort-title">Başlık</option>
+                  </select>
+                </label>
+                <input id="task-manager-search" class="settings-input task-manager-search" type="search"
+                  data-i18n-placeholder="task-manager-search-placeholder" placeholder="Sekme veya URL ara...">
+              </div>
+              <div class="task-manager-summary">
+                <div>
+                  <span data-i18n="task-manager-total-tabs">Toplam sekme</span>
+                  <strong id="task-manager-total-tabs">-</strong>
+                </div>
+                <div>
+                  <span data-i18n="task-manager-active-tabs">Aktif sekmeler</span>
+                  <strong id="task-manager-active-tabs">-</strong>
+                </div>
+                <div>
+                  <span data-i18n="task-manager-sleeping-tabs">Uyuyan sekmeler</span>
+                  <strong id="task-manager-sleeping-tabs">-</strong>
+                </div>
+                <div>
+                  <span data-i18n="task-manager-total-memory">Toplam RAM</span>
+                  <strong id="task-manager-total-memory">-</strong>
+                </div>
+                <div>
+                  <span data-i18n="task-manager-average-memory">Ortalama RAM</span>
+                  <strong id="task-manager-average-memory">-</strong>
+                </div>
+                <div>
+                  <span data-i18n="task-manager-top-tab">En yüksek RAM</span>
+                  <strong id="task-manager-top-tab">-</strong>
+                </div>
+                <div>
+                  <span data-i18n="task-manager-total-cpu">Toplam CPU</span>
+                  <strong id="task-manager-total-cpu">-</strong>
+                </div>
+                <div>
+                  <span data-i18n="task-manager-top-cpu">En yüksek CPU</span>
+                  <strong id="task-manager-top-cpu">-</strong>
+                </div>
+                <div>
+                  <span data-i18n="task-manager-high-usage-tabs">Yüksek kullanım</span>
+                  <strong id="task-manager-high-usage-tabs">-</strong>
+                </div>
+                <div>
+                  <span data-i18n="task-manager-audio-tabs">Ses çalan</span>
+                  <strong id="task-manager-audio-tabs">-</strong>
+                </div>
+                <div>
+                  <span data-i18n="task-manager-pinned-tabs">Sabit sekmeler</span>
+                  <strong id="task-manager-pinned-tabs">-</strong>
+                </div>
+              </div>
+              <div class="task-manager-section-header">
+                <span data-i18n="task-manager-resource-section-title">Kaynak Durumu</span>
+              </div>
+              <div class="task-manager-health">
+                <div>
+                  <span data-i18n="task-manager-resource-state">Kaynak durumu</span>
+                  <strong id="task-manager-health-text">-</strong>
+                </div>
+                <div>
+                  <span data-i18n="task-manager-last-updated">Son güncelleme</span>
+                  <strong id="task-manager-last-updated">-</strong>
+                </div>
+                <div>
+                  <span data-i18n="task-manager-sleep-savings">Uyku tasarrufu</span>
+                  <strong id="task-manager-sleep-savings">-</strong>
+                </div>
+                <div>
+                  <span data-i18n="task-manager-recommendation">Öneri</span>
+                  <strong id="task-manager-recommendation">-</strong>
+                </div>
+              </div>
+              <div class="task-manager-section-header task-manager-tabs-header">
+                <span data-i18n="task-manager-tabs-section-title">Sekmeler</span>
+                <strong id="task-manager-visible-count">-</strong>
+              </div>
+              <div id="task-manager-list" class="task-manager-list"></div>
             </div>
           </div>
 
@@ -1220,7 +1350,7 @@
                 <img src="../../assets/logo.svg" width="48" height="48" alt="OSLO" class="settings-logo-spin">
                 <div class="settings-about-info">
                   <span class="settings-about-name">OSLO Browser</span>
-                  <span class="settings-about-ver">v<span id="about-version-display-main">1.0.0-beta.2</span></span>
+                  <span class="settings-about-ver">v<span id="about-version-display-main">1.0.0-beta.3</span></span>
                 </div>
               </div>
               <div id="update-status-message" class="settings-update-msg" style="display: none;"></div>
@@ -1390,7 +1520,7 @@
               <div class="settings-card-title" data-i18n="passwords-backup-title">Yedekle ve Geri Yükle</div>
               <p class="settings-page-desc"
                 style="margin-top: 4px; margin-bottom: 12px; font-size: 12px; color: var(--text-muted);"
-                data-i18n="passwords-backup-desc">Şifrelerinizi CSV dosyası olarak dışarı aktarabilir veya başka bir
+                data-i18n="passwords-backup-desc">Şifrelerinizi CSV dosyası olarak dışa aktarabilir veya başka bir
                 tarayıcıdan aktarılmış şifreleri içe aktarabilirsiniz.</p>
               <div style="display: flex; gap: 10px;">
                 <button id="settings-passwords-import-btn" class="settings-action-btn">
@@ -1407,7 +1537,7 @@
                     <path
                       d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z" />
                   </svg>
-                  <span data-i18n="passwords-export">Şifreleri Dışarı Aktar</span>
+                  <span data-i18n="passwords-export">Şifreleri Dışa Aktar</span>
                 </button>
               </div>
             </div>
@@ -1511,7 +1641,7 @@
         <div class="update-version-flow">
           <div class="version-chip current">
             <span class="version-label" data-i18n="current-version-label">Mevcut</span>
-            <span class="version-number" id="update-current-version">v1.0.0-beta.2</span>
+            <span class="version-number" id="update-current-version">v1.0.0-beta.3</span>
           </div>
           <div class="version-arrow">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
@@ -1520,7 +1650,7 @@
           </div>
           <div class="version-chip latest">
             <span class="version-label" data-i18n="latest-version-label">Yeni</span>
-            <span class="version-number" id="update-modal-version">v1.0.0-beta.2</span>
+            <span class="version-number" id="update-modal-version">v1.0.0-beta.3</span>
           </div>
         </div>
 
@@ -1712,7 +1842,7 @@
             </div>
             <div class="audit-stat-card"
               style="flex: 1; padding: 12px; border-radius: 12px; background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;">
-              <span style="font-size: 11px; color: #fbbf24;" data-i18n="password-audit-reused-count">Tekrar Alan</span>
+              <span style="font-size: 11px; color: #fbbf24;" data-i18n="password-audit-reused-count">Tekrarlayan</span>
               <strong id="audit-reused-count" style="font-size: 20px; color: #f59e0b;">0</strong>
             </div>
             <div class="audit-stat-card"
@@ -1973,50 +2103,68 @@
 
   <!-- Site Security Info Modal (Chrome-like) -->
   <div id="security-info-modal" class="modal-overlay">
-    <div class="modal-card" style="max-width: 380px;">
+    <div class="modal-card site-security-card">
       <div class="modal-header">
         <h3 id="security-info-modal-title" data-i18n="security-info-title">Site Bilgisi</h3>
         <button id="close-security-info-modal" class="modal-close-btn">&times;</button>
       </div>
-      <div class="modal-body" style="padding: 20px; display: flex; flex-direction: column; gap: 18px;">
-        <!-- Domain Header -->
-        <div id="security-info-domain"
-          style="font-size: 16px; font-weight: 600; color: var(--text-main); word-break: break-all; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
-        </div>
-
-        <!-- Connection Status Area -->
-        <div class="connection-status-section"
-          style="display: flex; gap: 12px; align-items: flex-start; padding: 12px; background: rgba(255, 255, 255, 0.03); border-radius: 8px; border: 1px solid var(--border-color);">
-          <div id="security-info-conn-icon" style="margin-top: 2px; flex-shrink: 0;">
+      <div class="modal-body site-security-body">
+        <div class="site-security-domain-row">
+          <div class="site-security-domain-icon" id="security-info-conn-icon">
             <!-- Icon will be inserted dynamically -->
           </div>
-          <div style="display: flex; flex-direction: column; gap: 4px;">
-            <div id="security-info-conn-title" style="font-weight: 600; font-size: 13px;"></div>
-            <div id="security-info-conn-desc" style="font-size: 11px; color: var(--text-muted); line-height: 1.4;">
-            </div>
+          <div>
+            <div id="security-info-domain" class="site-security-domain"></div>
+            <div id="security-info-origin" class="site-security-origin"></div>
           </div>
         </div>
 
-        <!-- Permissions Area -->
-        <div id="security-info-permissions-section" style="display: flex; flex-direction: column; gap: 10px;">
-          <h4
-            style="font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0;"
-            data-i18n="site-permissions">İzinler</h4>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="color: var(--text-muted);">
-                <path
-                  d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z" />
-              </svg>
-              <span style="font-size: 13px;" data-i18n="permission-notifications">Bildirimler</span>
-            </div>
-            <select id="security-info-notifications-select"
-              style="background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-main); padding: 4px 8px; border-radius: 6px; font-size: 12px; outline: none; cursor: pointer;">
-              <option value="default" data-i18n="permission-default">Varsayılan (Sor)</option>
-              <option value="allow" data-i18n="permission-allow">İzin Ver</option>
-              <option value="block" data-i18n="permission-block">Engelle</option>
-            </select>
+        <div class="site-security-stats">
+          <div>
+            <span data-i18n="site-security-blocked">Engellenen reklam/takipçi</span>
+            <strong id="security-info-blocked-count">0</strong>
           </div>
+          <div>
+            <span data-i18n="site-security-cookies">Çerezler</span>
+            <strong id="security-info-cookie-count">0</strong>
+          </div>
+          <div>
+            <span data-i18n="site-security-permission-count">Site izinleri</span>
+            <strong id="security-info-permission-count">0</strong>
+          </div>
+        </div>
+
+        <div class="site-security-section">
+          <div class="site-security-section-title" data-i18n="site-security-connection-title">Bağlantı ve Sertifika</div>
+          <div class="site-security-detail-row">
+            <span data-i18n="site-security-https-status">HTTPS durumu</span>
+            <strong id="security-info-https-status">-</strong>
+          </div>
+          <div class="site-security-detail-row">
+            <span data-i18n="site-security-certificate">Sertifika</span>
+            <strong id="security-info-certificate-status">-</strong>
+          </div>
+          <div class="site-security-callout">
+            <div id="security-info-conn-title" class="site-security-conn-title"></div>
+            <div id="security-info-conn-desc" class="site-security-conn-desc"></div>
+          </div>
+        </div>
+
+        <div class="site-security-section">
+          <div class="site-security-section-title" data-i18n="site-security-data-title">Çerezler ve Site Verileri</div>
+          <div class="site-security-detail-row">
+            <span data-i18n="site-security-cookie-summary">Çerez özeti</span>
+            <strong id="security-info-cookie-summary">-</strong>
+          </div>
+          <div class="site-security-detail-row">
+            <span data-i18n="site-security-cookie-policy">Çerez politikası</span>
+            <strong id="security-info-cookie-policy">-</strong>
+          </div>
+        </div>
+
+        <div id="security-info-permissions-section" class="site-security-section">
+          <div class="site-security-section-title" data-i18n="site-permissions">İzinler</div>
+          <div id="security-info-permission-controls" class="site-security-permissions"></div>
         </div>
       </div>
       <div class="modal-footer" style="display: flex; gap: 8px; padding: 12px 20px;">

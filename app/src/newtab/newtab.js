@@ -17,8 +17,11 @@ document.addEventListener('DOMContentLoaded', () => {
       'modal-title-edit': 'Kısayolu Düzenle',
       'modal-name': 'Ad',
       'modal-url': 'URL Adresi',
+      'modal-name-placeholder': 'Örn: Google',
+      'modal-url-placeholder': 'Örn: https://www.google.com',
       'modal-cancel': 'İptal',
       'modal-save': 'Kaydet',
+      'modal-ok': 'Tamam',
       'weather-error': 'Hava durumu alınamadı.',
       'greeting-morning': 'Günaydın',
       'greeting-afternoon': 'Tünaydın',
@@ -54,8 +57,11 @@ document.addEventListener('DOMContentLoaded', () => {
       'modal-title-edit': 'Edit Shortcut',
       'modal-name': 'Name',
       'modal-url': 'URL Address',
+      'modal-name-placeholder': 'E.g. Google',
+      'modal-url-placeholder': 'E.g. https://www.google.com',
       'modal-cancel': 'Cancel',
       'modal-save': 'Save',
+      'modal-ok': 'OK',
       'weather-error': 'Weather could not be retrieved.',
       'greeting-morning': 'Good Morning',
       'greeting-afternoon': 'Good Afternoon',
@@ -91,8 +97,11 @@ document.addEventListener('DOMContentLoaded', () => {
       'modal-title-edit': 'Modifier le Raccourci',
       'modal-name': 'Nom',
       'modal-url': 'Adresse URL',
+      'modal-name-placeholder': 'Ex. : Google',
+      'modal-url-placeholder': 'Ex. : https://www.google.com',
       'modal-cancel': 'Annuler',
       'modal-save': 'Enregistrer',
+      'modal-ok': 'OK',
       'weather-error': 'Météo indisponible.',
       'greeting-morning': 'Bon matin',
       'greeting-afternoon': 'Bon après-midi',
@@ -508,9 +517,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Modal labels
     const nameLabel = document.querySelector('label[for="modal-name-input"]');
     if (nameLabel) nameLabel.textContent = newtabTranslations[activeLang]['modal-name'];
+    const modalNameField = document.getElementById('modal-name-input');
+    if (modalNameField) modalNameField.placeholder = newtabTranslations[activeLang]['modal-name-placeholder'];
 
     const urlLabel = document.querySelector('label[for="modal-url-input"]');
     if (urlLabel) urlLabel.textContent = newtabTranslations[activeLang]['modal-url'];
+    const modalUrlField = document.getElementById('modal-url-input');
+    if (modalUrlField) modalUrlField.placeholder = newtabTranslations[activeLang]['modal-url-placeholder'];
 
     if (modalCancelBtn) modalCancelBtn.textContent = newtabTranslations[activeLang]['modal-cancel'];
     if (modalSaveBtn) modalSaveBtn.textContent = newtabTranslations[activeLang]['modal-save'];
@@ -596,6 +609,30 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
     return { name, url };
+  }
+
+  function showNewtabAlert(message) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal-card" style="max-width: 420px;">
+        <h3>OSLO Browser</h3>
+        <div class="modal-body" style="color: var(--text-muted); line-height: 1.55; white-space: pre-wrap;">${escapeHtml(message)}</div>
+        <div class="modal-actions">
+          <button type="button" class="save-btn alert-ok-btn">${escapeHtml(newtabTranslations[activeLang]['modal-ok'])}</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('open'));
+    const close = () => {
+      overlay.classList.remove('open');
+      setTimeout(() => overlay.remove(), 180);
+    };
+    overlay.querySelector('.alert-ok-btn')?.addEventListener('click', close);
+    overlay.addEventListener('click', event => {
+      if (event.target === overlay) close();
+    });
   }
 
   let shortcuts = [];
@@ -1010,13 +1047,13 @@ document.addEventListener('DOMContentLoaded', () => {
     let url = modalUrlInput.value.trim();
 
     if (!url) {
-      alert(newtabTranslations[activeLang]['url-required']);
+      showNewtabAlert(newtabTranslations[activeLang]['url-required']);
       return;
     }
 
     url = normalizeShortcutUrl(url);
     if (!url) {
-      alert(newtabTranslations[activeLang]['url-invalid']);
+      showNewtabAlert(newtabTranslations[activeLang]['url-invalid']);
       return;
     }
 

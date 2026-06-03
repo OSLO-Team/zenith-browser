@@ -3,6 +3,7 @@ import { state } from './state.js';
 import { applyLanguage, translations } from './i18n.js';
 import { renderBookmarks, renderBookmarksBar } from './panels.js';
 import { updateBookmarkIcon } from './tabs.js';
+import { showOsloAlert as showCustomAlert, showOsloConfirm as showCustomConfirm } from './modal-dialogs.js';
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -617,6 +618,342 @@ function randomIndex(max) {
   return value[0] % max;
 }
 
+const TASK_MANAGER_AUTO_REFRESH_SECONDS = 10;
+const TASK_MANAGER_HIGH_MEMORY_MB = 750;
+const TASK_MANAGER_HIGH_CPU_PERCENT = 15;
+let taskManagerAutoRefreshTimer = null;
+let taskManagerNextRefreshAt = Date.now() + TASK_MANAGER_AUTO_REFRESH_SECONDS * 1000;
+let taskManagerRenderInFlight = false;
+let taskManagerFilter = 'all';
+let taskManagerSort = 'resource';
+let taskManagerSearch = '';
+
+function getTaskManagerLocale() {
+  if (state.currentLang === 'tr') return 'tr-TR';
+  if (state.currentLang === 'fr') return 'fr-FR';
+  return 'en-US';
+}
+
+function isTaskManagerPanelActive() {
+  const overlay = document.getElementById('settings-overlay');
+  const panel = document.getElementById('settings-tab-ram');
+  return !!(overlay?.classList.contains('open') && panel?.classList.contains('active'));
+}
+
+function updateTaskManagerCountdown() {
+  const countdown = document.getElementById('task-manager-countdown');
+  if (!countdown) return;
+  if (!isTaskManagerPanelActive()) {
+    countdown.textContent = `${TASK_MANAGER_AUTO_REFRESH_SECONDS}s`;
+    return;
+  }
+  const seconds = Math.max(0, Math.ceil((taskManagerNextRefreshAt - Date.now()) / 1000));
+  countdown.textContent = `${seconds}s`;
+}
+
+function scheduleNextTaskManagerRefresh() {
+  taskManagerNextRefreshAt = Date.now() + TASK_MANAGER_AUTO_REFRESH_SECONDS * 1000;
+  updateTaskManagerCountdown();
+}
+
+function ensureTaskManagerAutoRefresh() {
+  if (taskManagerAutoRefreshTimer) return;
+  taskManagerAutoRefreshTimer = setInterval(() => {
+    updateTaskManagerCountdown();
+    if (!isTaskManagerPanelActive() || taskManagerRenderInFlight) return;
+    if (Date.now() >= taskManagerNextRefreshAt) {
+      renderTaskManagerSection();
+    }
+  }, 1000);
+}
+
+function formatTaskManagerMemory(value) {
+  const number = Number(value) || 0;
+  return `${Math.round(number * 10) / 10} MB`;
+}
+
+function formatTaskManagerPercent(value) {
+  const number = Number(value) || 0;
+  return `${Math.round(number * 10) / 10}%`;
+}
+
+function formatTaskManagerDuration(seconds) {
+  const value = Math.max(0, Number(seconds) || 0);
+  if (value < 60) return `${Math.round(value)}s`;
+  if (value < 3600) return `${Math.round(value / 60)}m`;
+  return `${Math.round((value / 3600) * 10) / 10}h`;
+}
+
+function isTaskManagerHighUsage(tab) {
+  return (Number(tab.memoryMb) || 0) >= TASK_MANAGER_HIGH_MEMORY_MB || (Number(tab.cpuPercent) || 0) >= TASK_MANAGER_HIGH_CPU_PERCENT;
+}
+
+function getTaskManagerResourceScore(tab) {
+  return (Number(tab.memoryMb) || 0) + (Number(tab.cpuPercent) || 0) * 10 + (Number(tab.idleWakeups) || 0) * 2;
+}
+
+function getTaskManagerHealth(totalMemory, totalCpu, tabs) {
+  const heavyTabs = tabs.filter(isTaskManagerHighUsage).length;
+  if (totalCpu >= 60 || totalMemory >= 2500 || heavyTabs >= 3) {
+    return { level: 'high', label: getText('task-manager-health-high', 'Yüksek kullanım') };
+  }
+  if (totalCpu >= 25 || totalMemory >= 1200 || heavyTabs > 0) {
+    return { level: 'warning', label: getText('task-manager-health-warning', 'Dikkat gerekli') };
+  }
+  return { level: 'normal', label: getText('task-manager-health-normal', 'Normal') };
+}
+
+function getTaskManagerRecommendation(health) {
+  if (health.level === 'high') return getText('task-manager-recommendation-high', 'Yoğun sekmeleri kapatın veya uyutun; sistem yükü yüksek.');
+  if (health.level === 'warning') return getText('task-manager-recommendation-warning', 'Yüksek kullanan sekmeleri uyutmak performansı artırabilir.');
+  return getText('task-manager-recommendation-normal', 'Kaynak kullanımı dengeli görünüyor.');
+}
+
+function taskManagerMatchesFilter(tab) {
+  if (taskManagerFilter === 'attention') return isTaskManagerHighUsage(tab);
+  if (taskManagerFilter === 'active') return !!tab.isActive;
+  if (taskManagerFilter === 'sleeping') return !!tab.isSleeping;
+  if (taskManagerFilter === 'audio') return !!tab.isPlayingAudio;
+  if (taskManagerFilter === 'pinned') return !!tab.isPinned;
+  return true;
+}
+
+function getVisibleTaskManagerTabs(tabs) {
+  const query = taskManagerSearch.trim().toLowerCase();
+  const filtered = tabs.filter(tab => {
+    if (!taskManagerMatchesFilter(tab)) return false;
+    if (!query) return true;
+    return `${tab.title || ''} ${tab.url || ''} ${tab.space || ''}`.toLowerCase().includes(query);
+  });
+
+  return filtered.sort((a, b) => {
+    if (taskManagerSort === 'memory') return (Number(b.memoryMb) || 0) - (Number(a.memoryMb) || 0);
+    if (taskManagerSort === 'cpu') return (Number(b.cpuPercent) || 0) - (Number(a.cpuPercent) || 0);
+    if (taskManagerSort === 'activity') return (Number(b.lastActiveAt) || 0) - (Number(a.lastActiveAt) || 0);
+    if (taskManagerSort === 'title') return String(a.title || '').localeCompare(String(b.title || ''), getTaskManagerLocale());
+    return getTaskManagerResourceScore(b) - getTaskManagerResourceScore(a);
+  });
+}
+
+function buildTaskManagerFlags(tab) {
+  const flags = [];
+  if (tab.isPinned) flags.push(getText('task-manager-pinned', 'Sabit'));
+  if (tab.isPlayingAudio) flags.push(getText('task-manager-audio', 'Ses'));
+  if (tab.hasSplit) flags.push(getText('task-manager-split', 'Bölünmüş'));
+  if (tab.isLoading) flags.push(getText('task-manager-loading', 'Yükleniyor'));
+  return flags;
+}
+
+function initTaskManagerControls() {
+  const filterControl = document.getElementById('task-manager-filter');
+  const sortControl = document.getElementById('task-manager-sort');
+  const searchControl = document.getElementById('task-manager-search');
+
+  if (filterControl && !filterControl.dataset.bound) {
+    filterControl.dataset.bound = 'true';
+    filterControl.addEventListener('change', () => {
+      taskManagerFilter = filterControl.value || 'all';
+      renderTaskManagerSection();
+    });
+  }
+
+  if (sortControl && !sortControl.dataset.bound) {
+    sortControl.dataset.bound = 'true';
+    sortControl.addEventListener('change', () => {
+      taskManagerSort = sortControl.value || 'resource';
+      renderTaskManagerSection();
+    });
+  }
+
+  if (searchControl && !searchControl.dataset.bound) {
+    searchControl.dataset.bound = 'true';
+    searchControl.addEventListener('input', () => {
+      taskManagerSearch = searchControl.value || '';
+      renderTaskManagerSection();
+    });
+  }
+}
+
+function renderTaskManagerRowHtml(tab) {
+  const title = tab.title || getText('new-tab', 'Yeni Sekme');
+  const status = tab.isSleeping
+    ? getText('task-manager-sleeping', 'Uykuda')
+    : (tab.isActive ? getText('task-manager-active', 'Aktif') : getText('task-manager-running', 'Çalışıyor'));
+  const isHighUsage = isTaskManagerHighUsage(tab);
+  const highUsageBadge = isHighUsage
+    ? `<span class="task-manager-hot">${escapeHtml(getText('task-manager-heavy', 'Yüksek'))}</span>`
+    : '';
+  const flags = buildTaskManagerFlags(tab);
+  const flagHtml = flags.length ? `<div class="task-manager-flags">${flags.map(flag => `<span>${escapeHtml(flag)}</span>`).join('')}</div>` : '';
+  const inactiveLabel = tab.isActive
+    ? getText('task-manager-active', 'Aktif')
+    : `${getText('task-manager-inactive', 'Boşta')} ${formatTaskManagerDuration(tab.inactiveSeconds)}`;
+
+  return `
+    <div class="task-manager-row ${isHighUsage ? 'attention' : ''}" data-tab-id="${escapeHtml(tab.id)}">
+      <div class="task-manager-tab-main">
+        <div class="task-manager-title-line">
+          <div class="task-manager-tab-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+          ${highUsageBadge}
+        </div>
+        <div class="task-manager-tab-url" title="${escapeHtml(tab.url || '')}">${escapeHtml(tab.url || tab.space || '')}</div>
+        ${flagHtml}
+        <div class="task-manager-detail-grid">
+          <span>${escapeHtml(getText('task-manager-space', 'Alan'))}: <strong>${escapeHtml(tab.space || '-')}</strong></span>
+          <span>${escapeHtml(getText('task-manager-window', 'Pencere'))}: <strong>${escapeHtml(tab.windowId || '-')}</strong></span>
+          <span>${escapeHtml(getText('task-manager-zoom', 'Zoom'))}: <strong>${escapeHtml(formatTaskManagerPercent((Number(tab.zoomFactor) || 1) * 100))}</strong></span>
+          <span>${escapeHtml(getText('task-manager-process-id', 'PID'))}: <strong>${escapeHtml(tab.pid || '-')}</strong></span>
+          <span>${escapeHtml(getText('task-manager-last-active-short', 'Son aktif'))}: <strong>${escapeHtml(inactiveLabel)}</strong></span>
+          <span>${escapeHtml(getText('task-manager-idle-wakeups', 'Uyandırma/sn'))}: <strong>${escapeHtml(String(tab.idleWakeups || 0))}</strong></span>
+        </div>
+      </div>
+      <div class="task-manager-pill">${escapeHtml(status)}</div>
+      <div class="task-manager-metric"><span>${escapeHtml(getText('task-manager-working-set', 'Çalışma seti'))}</span><strong>${escapeHtml(formatTaskManagerMemory(tab.memoryMb))}</strong><small>${escapeHtml(getText('task-manager-private-memory', 'Özel bellek'))}: ${escapeHtml(formatTaskManagerMemory(tab.privateMemoryMb))}</small></div>
+      <div class="task-manager-metric"><span>CPU</span><strong>${escapeHtml(formatTaskManagerPercent(tab.cpuPercent))}</strong><small>${escapeHtml(getText('task-manager-peak-memory', 'Zirve RAM'))}: ${escapeHtml(formatTaskManagerMemory(tab.peakMemoryMb))}</small></div>
+      <div class="task-manager-actions">
+        <button class="task-manager-btn sleep" ${tab.canSleep ? '' : 'disabled'}>${escapeHtml(getText('task-manager-sleep', 'Uyut'))}</button>
+        <button class="task-manager-btn reload" ${tab.isSleeping ? 'disabled' : ''}>${escapeHtml(getText('task-manager-reload', 'Yenile'))}</button>
+        <button class="task-manager-btn close">${escapeHtml(getText('task-manager-close', 'Kapat'))}</button>
+      </div>
+    </div>
+  `;
+}
+
+function bindTaskManagerRowActions(row) {
+  const tabId = row.getAttribute('data-tab-id');
+  row.querySelector('.task-manager-btn.sleep')?.addEventListener('click', () => {
+    window.oslo.sleepTab(tabId);
+    setTimeout(renderTaskManagerSection, 250);
+  });
+  row.querySelector('.task-manager-btn.reload')?.addEventListener('click', () => {
+    refreshTaskManagerRow(tabId);
+  });
+  row.querySelector('.task-manager-btn.close')?.addEventListener('click', () => {
+    window.oslo.closeTab(tabId);
+    setTimeout(renderTaskManagerSection, 250);
+  });
+}
+
+async function refreshTaskManagerRow(tabId) {
+  if (!tabId || typeof window.oslo.getTaskManagerTab !== 'function') return;
+  const row = document.querySelector(`.task-manager-row[data-tab-id="${CSS.escape(tabId)}"]`);
+  const reloadButton = row?.querySelector('.task-manager-btn.reload');
+  if (reloadButton) reloadButton.disabled = true;
+
+  try {
+    const snapshot = await window.oslo.getTaskManagerTab(tabId);
+    const tab = snapshot?.tab;
+    if (!tab || !row) {
+      renderTaskManagerSection();
+      return;
+    }
+
+    row.outerHTML = renderTaskManagerRowHtml(tab);
+    const nextRow = document.querySelector(`.task-manager-row[data-tab-id="${CSS.escape(tabId)}"]`);
+    if (nextRow) bindTaskManagerRowActions(nextRow);
+  } catch (error) {
+    renderTaskManagerSection();
+  }
+}
+
+async function renderTaskManagerSection() {
+  const list = document.getElementById('task-manager-list');
+  if (!list || typeof window.oslo.getTaskManagerTabs !== 'function') return;
+  if (!isTaskManagerPanelActive()) {
+    updateTaskManagerCountdown();
+    return;
+  }
+  if (taskManagerRenderInFlight) return;
+
+  taskManagerRenderInFlight = true;
+  try {
+    const snapshot = await window.oslo.getTaskManagerTabs();
+    const taskTabs = Array.isArray(snapshot?.tabs) ? snapshot.tabs : [];
+    const totalMemory = taskTabs.reduce((sum, tab) => sum + (Number(tab.memoryMb) || 0), 0);
+    const totalCpu = taskTabs.reduce((sum, tab) => sum + (Number(tab.cpuPercent) || 0), 0);
+    const topMemoryTab = [...taskTabs].sort((a, b) => (Number(b.memoryMb) || 0) - (Number(a.memoryMb) || 0))[0] || null;
+    const topCpuTab = [...taskTabs].sort((a, b) => (Number(b.cpuPercent) || 0) - (Number(a.cpuPercent) || 0))[0] || null;
+    const visibleTabs = getVisibleTaskManagerTabs(taskTabs);
+    const activeCount = taskTabs.filter(tab => tab.isActive).length;
+    const sleepingCount = taskTabs.filter(tab => tab.isSleeping).length;
+    const highUsageCount = taskTabs.filter(isTaskManagerHighUsage).length;
+    const pinnedCount = taskTabs.filter(tab => tab.isPinned).length;
+    const audioCount = taskTabs.filter(tab => tab.isPlayingAudio).length;
+    const averageMemory = taskTabs.length ? totalMemory / taskTabs.length : 0;
+    const sleepingMemorySaved = taskTabs.reduce((sum, tab) => sum + (tab.isSleeping ? (Number(tab.sleepSavedMemoryMb) || Number(tab.peakMemoryMb) || 0) : 0), 0);
+    const health = getTaskManagerHealth(totalMemory, totalCpu, taskTabs);
+
+    const totalTabsEl = document.getElementById('task-manager-total-tabs');
+    const totalMemoryEl = document.getElementById('task-manager-total-memory');
+    const averageMemoryEl = document.getElementById('task-manager-average-memory');
+    const totalCpuEl = document.getElementById('task-manager-total-cpu');
+    const topTabEl = document.getElementById('task-manager-top-tab');
+    const activeTabsEl = document.getElementById('task-manager-active-tabs');
+    const sleepingTabsEl = document.getElementById('task-manager-sleeping-tabs');
+    const highUsageTabsEl = document.getElementById('task-manager-high-usage-tabs');
+    const pinnedTabsEl = document.getElementById('task-manager-pinned-tabs');
+    const audioTabsEl = document.getElementById('task-manager-audio-tabs');
+    const topCpuEl = document.getElementById('task-manager-top-cpu');
+    const healthTextEl = document.getElementById('task-manager-health-text');
+    const healthBox = document.querySelector('.task-manager-health');
+    const lastUpdatedEl = document.getElementById('task-manager-last-updated');
+    const sleepSavingsEl = document.getElementById('task-manager-sleep-savings');
+    const recommendationEl = document.getElementById('task-manager-recommendation');
+    const visibleCountEl = document.getElementById('task-manager-visible-count');
+
+    if (totalTabsEl) totalTabsEl.textContent = String(taskTabs.length);
+    if (totalMemoryEl) totalMemoryEl.textContent = formatTaskManagerMemory(totalMemory);
+    if (averageMemoryEl) averageMemoryEl.textContent = formatTaskManagerMemory(averageMemory);
+    if (totalCpuEl) totalCpuEl.textContent = formatTaskManagerPercent(totalCpu);
+    if (topTabEl) topTabEl.textContent = topMemoryTab ? (topMemoryTab.title || '-') : '-';
+    if (activeTabsEl) activeTabsEl.textContent = String(activeCount);
+    if (sleepingTabsEl) sleepingTabsEl.textContent = String(sleepingCount);
+    if (highUsageTabsEl) highUsageTabsEl.textContent = String(highUsageCount);
+    if (pinnedTabsEl) pinnedTabsEl.textContent = String(pinnedCount);
+    if (audioTabsEl) audioTabsEl.textContent = String(audioCount);
+    if (topCpuEl) topCpuEl.textContent = topCpuTab ? `${topCpuTab.title || '-'} (${formatTaskManagerPercent(topCpuTab.cpuPercent)})` : '-';
+    if (healthTextEl) {
+      healthTextEl.textContent = health.label;
+      healthTextEl.className = health.level;
+    }
+    if (healthBox) healthBox.dataset.level = health.level;
+    if (sleepSavingsEl) sleepSavingsEl.textContent = sleepingMemorySaved > 0 ? formatTaskManagerMemory(sleepingMemorySaved) : '-';
+    if (recommendationEl) {
+      recommendationEl.textContent = getTaskManagerRecommendation(health);
+      recommendationEl.className = health.level;
+    }
+    if (visibleCountEl) visibleCountEl.textContent = `${visibleTabs.length}/${taskTabs.length}`;
+    if (lastUpdatedEl) {
+      lastUpdatedEl.textContent = new Intl.DateTimeFormat(getTaskManagerLocale(), {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      }).format(new Date(snapshot?.generatedAt || Date.now()));
+    }
+
+    if (taskTabs.length === 0) {
+      list.innerHTML = `<div class="task-manager-empty">${getText('task-manager-empty', 'Açık sekme bulunamadı.')}</div>`;
+      return;
+    }
+
+    if (visibleTabs.length === 0) {
+      list.innerHTML = `<div class="task-manager-empty">${escapeHtml(getText('task-manager-no-results', 'Filtreyle eşleşen sekme yok.'))}</div>`;
+      return;
+    }
+
+    list.innerHTML = visibleTabs.map(renderTaskManagerRowHtml).join('');
+
+    list.querySelectorAll('.task-manager-row').forEach(row => {
+      bindTaskManagerRowActions(row);
+    });
+  } catch (error) {
+    list.innerHTML = `<div class="task-manager-empty">${escapeHtml(getText('task-manager-error', 'Görev yöneticisi verileri alınamadı.'))}</div>`;
+  } finally {
+    taskManagerRenderInFlight = false;
+    scheduleNextTaskManagerRefresh();
+  }
+}
+
 function shuffleSecure(chars) {
   for (let i = chars.length - 1; i > 0; i--) {
     const swap = randomIndex(i + 1);
@@ -833,7 +1170,7 @@ async function auditSavedPasswords() {
   } catch (err) {
     console.error('Password audit failed:', err);
     if (loadingState) loadingState.style.display = 'none';
-    alert(getText('password-audit-error', 'Şifre taraması tamamlanamadı.'));
+    showCustomAlert(getText('password-audit-title', 'Şifre Güvenliği'), getText('password-audit-error', 'Şifre taraması tamamlanamadı.'));
     modal.classList.remove('open');
     window.dispatchEvent(new Event('resize'));
   }
@@ -958,6 +1295,7 @@ export function initSettings() {
   if (closeSettings) {
     closeSettings.addEventListener('click', () => {
       settingsOverlay?.classList.remove('open');
+      updateTaskManagerCountdown();
       window.dispatchEvent(new Event('resize'));
     });
   }
@@ -980,6 +1318,10 @@ export function initSettings() {
         renderSavedPasswords();
       } else if (tabName === 'about') {
         loadAboutTabSystemInfo();
+      } else if (tabName === 'ram') {
+        initTaskManagerControls();
+        ensureTaskManagerAutoRefresh();
+        renderTaskManagerSection();
       }
     });
   });
@@ -1196,6 +1538,10 @@ export function initSettings() {
   Object.entries(privacyCheckboxControls).forEach(([key, id]) => bindSettingCheckbox(id, key));
   Object.entries(privacyTextControls).forEach(([key, id]) => bindSettingText(id, key));
 
+  ensureTaskManagerAutoRefresh();
+  initTaskManagerControls();
+  updateTaskManagerCountdown();
+
   const settingsDnsCheckbox = document.getElementById('settings-dns-checkbox');
   const settingsDnsProvider = document.getElementById('settings-dns-provider');
   const settingsDnsCustomProvider = document.getElementById('settings-dns-custom-provider');
@@ -1411,15 +1757,15 @@ export function initSettings() {
         if (res.success) {
           let msg = translations[state.currentLang]['passwords-import-success'] || 'Şifreler başarıyla içe aktarıldı!\nYeni: {added}\nGüncellenen: {updated}';
           msg = msg.replace('{added}', res.added).replace('{updated}', res.updated);
-          alert(msg);
+          showCustomAlert(getText('saved-passwords-title', 'Kayıtlı Şifreler'), msg);
           renderSavedPasswords();
         } else if (res.message === 'no_credentials_found') {
           const msg = translations[state.currentLang]['passwords-import-empty'] || 'Seçilen dosyada şifre bulunamadı.';
-          alert(msg);
+          showCustomAlert(getText('saved-passwords-title', 'Kayıtlı Şifreler'), msg);
         } else if (res.message !== 'canceled') {
           let msg = translations[state.currentLang]['passwords-import-error'] || 'İçe aktarma hatası: {error}';
           msg = msg.replace('{error}', res.message);
-          alert(msg);
+          showCustomAlert(getText('saved-passwords-title', 'Kayıtlı Şifreler'), msg);
         }
       });
     });
@@ -1430,16 +1776,16 @@ export function initSettings() {
       window.oslo.exportPasswords().then((res) => {
         if (!res) return;
         if (res.success) {
-          let msg = translations[state.currentLang]['passwords-export-success'] || 'Şifreler başarıyla dışarı aktarıldı!\nToplam: {count}';
+          let msg = translations[state.currentLang]['passwords-export-success'] || 'Şifreler başarıyla dışa aktarıldı!\nToplam: {count}';
           msg = msg.replace('{count}', res.count);
-          alert(msg);
+          showCustomAlert(getText('saved-passwords-title', 'Kayıtlı Şifreler'), msg);
         } else if (res.message === 'no_passwords_to_export') {
-          const msg = translations[state.currentLang]['passwords-export-empty'] || 'Dışarı aktarılacak şifre bulunmuyor.';
-          alert(msg);
+          const msg = translations[state.currentLang]['passwords-export-empty'] || 'Dışa aktarılacak şifre bulunmuyor.';
+          showCustomAlert(getText('saved-passwords-title', 'Kayıtlı Şifreler'), msg);
         } else if (res.message !== 'canceled') {
-          let msg = translations[state.currentLang]['passwords-export-error'] || 'Dışarı aktarma hatası: {error}';
+          let msg = translations[state.currentLang]['passwords-export-error'] || 'Dışa aktarma hatası: {error}';
           msg = msg.replace('{error}', res.message);
-          alert(msg);
+          showCustomAlert(getText('saved-passwords-title', 'Kayıtlı Şifreler'), msg);
         }
       });
     });
@@ -1792,8 +2138,8 @@ export function loadAboutTabSystemInfo() {
     const valV8 = document.getElementById('sys-val-v8');
     const valUseragent = document.getElementById('sys-val-useragent');
 
-    if (versionDisplay) versionDisplay.textContent = info.appVersion || '1.0.0-beta.2';
-    if (versionDisplayMain) versionDisplayMain.textContent = info.appVersion || '1.0.0-beta.2';
+    if (versionDisplay) versionDisplay.textContent = info.appVersion || '1.0.0-beta.3';
+    if (versionDisplayMain) versionDisplayMain.textContent = info.appVersion || '1.0.0-beta.3';
     if (valElectron) valElectron.textContent = info.electron || '-';
     if (valChrome) valChrome.textContent = info.chrome || '-';
     if (valNode) valNode.textContent = info.node || '-';
@@ -1804,107 +2150,6 @@ export function loadAboutTabSystemInfo() {
   });
 }
 
-function showCustomAlert(title, message) {
-  return new Promise((resolve) => {
-    const modalId = 'custom-alert-modal-' + Date.now();
-    const overlay = document.createElement('div');
-    overlay.id = modalId;
-    overlay.className = 'modal-overlay';
-
-    let iconHtml = `
-      <svg viewBox="0 0 24 24" width="24" height="24" fill="var(--accent-color)" style="flex-shrink:0;">
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h-2v2h2v4h-2v2h6v-2zm0-8h-2V7h2v2z"/>
-      </svg>
-    `;
-
-    overlay.innerHTML = `
-      <div class="modal-card" style="width: 420px; border-color: var(--accent-color); background: rgba(11, 12, 14, 0.85); box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
-        <div class="modal-header" style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding: 16px 20px;">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            ${iconHtml}
-            <h3 style="font-size: 15px; font-weight: 600; color: var(--text-main); margin:0;">${escapeHtml(title)}</h3>
-          </div>
-          <button class="modal-close-btn" style="font-size: 20px;">&times;</button>
-        </div>
-        <div class="modal-body" style="padding: 20px; font-size: 13px; color: var(--text-muted); line-height: 1.5; white-space: pre-wrap;">
-          ${escapeHtml(message)}
-        </div>
-        <div class="modal-footer" style="border-top: 1px solid rgba(255, 255, 255, 0.05); background: rgba(0,0,0,0.1); padding: 12px 20px;">
-          <button class="modal-btn primary-btn btn-ok" style="padding: 8px 18px; font-size: 12px; min-width: 80px; justify-content: center; display: flex; align-items: center;">${translations[state.currentLang]['modal-ok'] || 'Tamam'}</button>
-        </div>
-      </div>
-    `;
-
-    document.body.appendChild(overlay);
-
-    setTimeout(() => {
-      overlay.classList.add('open');
-    }, 10);
-
-    const close = () => {
-      overlay.classList.remove('open');
-      setTimeout(() => {
-        overlay.remove();
-        resolve();
-      }, 250);
-    };
-
-    overlay.querySelector('.modal-close-btn').addEventListener('click', close);
-    overlay.querySelector('.btn-ok').addEventListener('click', close);
-  });
-}
-
-function showCustomConfirm(title, message) {
-  return new Promise((resolve) => {
-    const modalId = 'custom-confirm-modal-' + Date.now();
-    const overlay = document.createElement('div');
-    overlay.id = modalId;
-    overlay.className = 'modal-overlay';
-
-    let iconHtml = `
-      <svg viewBox="0 0 24 24" width="24" height="24" fill="#ff4d4d" style="flex-shrink:0;">
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
-      </svg>
-    `;
-
-    overlay.innerHTML = `
-      <div class="modal-card" style="width: 440px; border-color: rgba(255, 77, 77, 0.4); background: rgba(11, 12, 14, 0.85); box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
-        <div class="modal-header" style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding: 16px 20px;">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            ${iconHtml}
-            <h3 style="font-size: 15px; font-weight: 600; color: var(--text-main); margin:0;">${escapeHtml(title)}</h3>
-          </div>
-          <button class="modal-close-btn" style="font-size: 20px;">&times;</button>
-        </div>
-        <div class="modal-body" style="padding: 20px; font-size: 13px; color: var(--text-muted); line-height: 1.5; white-space: pre-wrap;">
-          ${escapeHtml(message)}
-        </div>
-        <div class="modal-footer" style="border-top: 1px solid rgba(255, 255, 255, 0.05); background: rgba(0,0,0,0.1); padding: 12px 20px;">
-          <button class="modal-btn secondary-btn btn-cancel" style="padding: 8px 18px; font-size: 12px; min-width: 80px; justify-content: center; display: flex; align-items: center;">${translations[state.currentLang]['modal-cancel'] || 'İptal'}</button>
-          <button class="modal-btn primary-btn btn-confirm" style="padding: 8px 18px; font-size: 12px; min-width: 80px; justify-content: center; display: flex; align-items: center; background: #ff4d4d; color: #fff;">${translations[state.currentLang]['modal-ok'] || 'Tamam'}</button>
-        </div>
-      </div>
-    `;
-
-    document.body.appendChild(overlay);
-
-    setTimeout(() => {
-      overlay.classList.add('open');
-    }, 10);
-
-    const cleanup = (value) => {
-      overlay.classList.remove('open');
-      setTimeout(() => {
-        overlay.remove();
-        resolve(value);
-      }, 250);
-    };
-
-    overlay.querySelector('.modal-close-btn').addEventListener('click', () => cleanup(false));
-    overlay.querySelector('.btn-cancel').addEventListener('click', () => cleanup(false));
-    overlay.querySelector('.btn-confirm').addEventListener('click', () => cleanup(true));
-  });
-}
 
 function showBookmarksImportExportModal(type, res) {
   return new Promise((resolve) => {

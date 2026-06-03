@@ -1,11 +1,13 @@
 {
   "name": "oslo-browser",
-  "version": "1.0.0-beta.2",
+  "version": "1.0.0-beta.3",
   "description": "OSLO Browser - Elegant Electron-based Custom Web Browser",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --win --publish never && node scripts/write-checksums.js"
+    "build": "electron-builder --win --publish never && node scripts/write-checksums.js",
+    "smoke": "node scripts/smoke-test.js",
+    "test": "npm run smoke"
   },
   "keywords": [
     "browser",
@@ -17,8 +19,8 @@
   "build": {
     "appId": "com.oslo.browser",
     "productName": "OSLO Browser",
-    "buildVersion": "1.0.0-beta.2",
-    "buildNumber": "1002",
+    "buildVersion": "1.0.0-beta.3",
+    "buildNumber": "1003",
     "directories": {
       "output": "dist"
     },

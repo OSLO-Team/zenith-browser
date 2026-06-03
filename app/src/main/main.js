@@ -4,6 +4,7 @@ const { pathToFileURL } = require('url');
 const crypto = require('crypto');
 const Store = require('./store');
 const adblock = require('./adblock');
+const { createTelemetryService } = require('./telemetry');
 
 // GitHub repository configuration for updates
 const GITHUB_REPO = 'OSLO-Team/oslo-browser'; // Format: 'owner/repo'
@@ -110,12 +111,6 @@ const passwordsStore = new Store('passwords', { passwords: [] });
 const certificateExceptionsStore = new Store('certificate-exceptions', { exceptions: {} });
 const passwordBreachCacheStore = new Store('password-breach-cache', { cache: {} });
 const PASSWORD_ENCODING = 'safeStorage:v1';
-const TELEMETRY_MAX_EVENTS = 100;
-const TELEMETRY_MAX_CRASHES = 50;
-const TELEMETRY_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-const TELEMETRY_MAX_DATA_BYTES = 8192;
-const TELEMETRY_MAX_STRING_LENGTH = 600;
-const TELEMETRY_MAX_STACK_LENGTH = 8000;
 
 const MAIN_TEXT = {
   tr: {
@@ -130,7 +125,7 @@ const MAIN_TEXT = {
     invalidSettingsFile: 'Geçersiz ayar dosyası formatı.',
     wallpaperSelectTitle: 'Yeni Sekme Arka Planı Seç',
     passwordsImportTitle: 'Şifreleri İçe Aktar (CSV)',
-    passwordsExportTitle: 'Şifreleri Dışarı Aktar (CSV)',
+    passwordsExportTitle: 'Şifreleri Dışa Aktar (CSV)',
     bookmarksExportTitle: 'Yer İmlerini Dışa Aktar',
     bookmarksImportTitle: 'Yer İmlerini İçe Aktar',
     filterJsonFiles: 'JSON Dosyaları',
@@ -192,129 +187,45 @@ function appText(key, lang = getAppLanguage()) {
   return MAIN_TEXT[lang]?.[key] || MAIN_TEXT.en[key] || MAIN_TEXT.tr[key] || key;
 }
 
-function normalizeTelemetryAction(action) {
-  return String(action || 'unknown-event')
-    .replace(/[^\w:.-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80) || 'unknown-event';
-}
+let telemetryService = null;
 
-function sanitizeTelemetryUrl(value) {
-  try {
-    const parsed = new URL(String(value || ''));
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-      return parsed.origin;
-    }
-    if (parsed.protocol === 'file:') return '[local-file]';
-    return parsed.protocol ? `[${parsed.protocol.replace(':', '')}-url]` : '[redacted-url]';
-  } catch (error) {
-    return '[redacted-url]';
-  }
-}
-
-function scrubSensitiveText(value, maxLength = TELEMETRY_MAX_STRING_LENGTH) {
-  return String(value || '')
-    .replace(/\bhttps?:\/\/[^\s"'<>]+/gi, match => sanitizeTelemetryUrl(match))
-    .replace(/file:\/\/\/[^\s"'<>]+/gi, '[local-file]')
-    .replace(/[A-Za-z]:\\[^\s)"'<>]+/g, '[local-path]')
-    .replace(/[?&](token|access_token|refresh_token|auth|key|password|secret|code|session|sid)=([^&\s]+)/gi, '$1=[redacted]')
-    .slice(0, maxLength);
-}
-
-function sanitizeTelemetryValue(value, key = '', depth = 0) {
-  const normalizedKey = String(key || '').toLowerCase();
-  if (value === null || value === undefined) return value;
-  if (typeof value === 'boolean' || typeof value === 'number') return value;
-
-  if (/url|uri|href|link/.test(normalizedKey)) {
-    return sanitizeTelemetryUrl(value);
-  }
-  if (/title|query|search|token|password|secret|authorization|cookie|email|username|space/.test(normalizedKey)) {
-    return '[redacted]';
-  }
-  if (typeof value === 'string') {
-    return scrubSensitiveText(value);
-  }
-  if (Array.isArray(value)) {
-    if (depth >= 4) return '[truncated]';
-    return value.slice(0, 20).map(item => sanitizeTelemetryValue(item, key, depth + 1));
-  }
-  if (typeof value === 'object') {
-    if (depth >= 4) return '[truncated]';
-    const sanitized = {};
-    Object.entries(value).slice(0, 40).forEach(([entryKey, entryValue]) => {
-      sanitized[entryKey] = sanitizeTelemetryValue(entryValue, entryKey, depth + 1);
+function getTelemetryService() {
+  if (!telemetryService) {
+    telemetryService = createTelemetryService({
+      telemetryStore,
+      settingsStore,
+      app,
+      getRuntimeSnapshot: () => ({
+        windows: windows?.size || 0,
+        tabs: Object.keys(tabs || {}).length,
+        sleepingTabs: Object.values(tabs || {}).filter(tab => tab?.isSleeping).length
+      })
     });
-    return limitTelemetryData(sanitized);
   }
-  return scrubSensitiveText(value);
+  return telemetryService;
 }
 
-function limitTelemetryData(value) {
-  try {
-    const bytes = Buffer.byteLength(JSON.stringify(value), 'utf8');
-    if (bytes <= TELEMETRY_MAX_DATA_BYTES) return value;
-    return {
-      truncated: true,
-      originalBytes: bytes,
-      reason: 'Telemetry data exceeded local size limit.'
-    };
-  } catch (error) {
-    return { truncated: true, reason: 'Telemetry data could not be serialized.' };
-  }
+function getTelemetryLogsSnapshot(options) {
+  return getTelemetryService().getTelemetryLogsSnapshot(options);
 }
 
-function pruneTelemetryEntries(entries, maxEntries) {
-  const cutoff = Date.now() - TELEMETRY_MAX_AGE_MS;
-  return (Array.isArray(entries) ? entries : [])
-    .filter(entry => {
-      const timestamp = Number(entry?.timestamp);
-      return Number.isFinite(timestamp) && timestamp >= cutoff;
-    })
-    .slice(-maxEntries);
-}
-
-function getTelemetryLogsSnapshot({ writeBack = false } = {}) {
-  const events = pruneTelemetryEntries(telemetryStore.get('events') || [], TELEMETRY_MAX_EVENTS);
-  const crashes = pruneTelemetryEntries(telemetryStore.get('crashes') || [], TELEMETRY_MAX_CRASHES);
-  if (writeBack) {
-    telemetryStore.set('events', events);
-    telemetryStore.set('crashes', crashes);
-  }
-  return { events, crashes };
+function getPerformanceSnapshot() {
+  return getTelemetryService().getPerformanceSnapshot();
 }
 
 function clearTelemetryLogs() {
-  telemetryStore.replace({ events: [], crashes: [] });
+  return getTelemetryService().clearTelemetryLogs();
 }
 
 function storeTelemetryEvent(action, data) {
-  if (!settingsStore.get('telemetryEnabled')) return;
-  const logs = getTelemetryLogsSnapshot();
-  logs.events.push({
-    timestamp: Date.now(),
-    action: normalizeTelemetryAction(action),
-    data: sanitizeTelemetryValue(data || {})
-  });
-  telemetryStore.set('events', pruneTelemetryEntries(logs.events, TELEMETRY_MAX_EVENTS));
+  return getTelemetryService().storeTelemetryEvent(action, data);
 }
 
 function storeTelemetryCrash(processName, message, stack = '', details = undefined) {
-  if (!settingsStore.get('telemetryEnabled')) return;
-  const logs = getTelemetryLogsSnapshot();
-  logs.crashes.push({
-    timestamp: Date.now(),
-    message: scrubSensitiveText(message || 'Unknown error', TELEMETRY_MAX_STRING_LENGTH),
-    stack: scrubSensitiveText(stack || '', TELEMETRY_MAX_STACK_LENGTH),
-    process: String(processName || 'unknown').slice(0, 40),
-    details: details === undefined ? undefined : sanitizeTelemetryValue(details)
-  });
-  telemetryStore.set('crashes', pruneTelemetryEntries(logs.crashes, TELEMETRY_MAX_CRASHES));
+  return getTelemetryService().storeTelemetryCrash(processName, message, stack, details);
 }
 
-if (!settingsStore.get('telemetryEnabled')) {
-  clearTelemetryLogs();
-}
+if (!settingsStore.get('telemetryEnabled')) clearTelemetryLogs();
 
 function isPasswordEncryptionAvailable() {
   try {
@@ -516,6 +427,29 @@ const configuredProfilePartitions = new Set();
 let pendingPermissionRequests = {};
 let permissionRequestId = 0;
 const permissionsStore = new Store('permissions', { permissions: {} });
+const siteBlockedCounts = new Map();
+
+function normalizeHostname(value) {
+  try {
+    return new URL(String(value || '')).hostname.toLowerCase();
+  } catch (error) {
+    return String(value || '').replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
+  }
+}
+
+function getSiteHostFromRequest(details = {}, blockedUrl = '') {
+  const source = details.initiator || details.referrer || '';
+  const sourceHost = normalizeHostname(source);
+  if (sourceHost) return sourceHost;
+  return normalizeHostname(blockedUrl);
+}
+
+function isCookieForHost(cookie, hostname) {
+  const cookieDomain = String(cookie.domain || '').replace(/^\./, '').toLowerCase();
+  const host = String(hostname || '').toLowerCase();
+  if (!cookieDomain || !host) return false;
+  return cookieDomain === host || host.endsWith(`.${cookieDomain}`) || cookieDomain.endsWith(`.${host}`);
+}
 
 function getSpacePartition(spaceName) {
   const normalized = String(spaceName || 'Genel').trim() || 'Genel';
@@ -641,16 +575,32 @@ function shouldThrottleBackgroundTabs() {
   return settingsStore.get('backgroundTabThrottling') !== false;
 }
 
-function createTabWebPreferences(profileSession) {
-  return {
-    preload: path.join(__dirname, '../preload.js'),
+function createTabWebPreferences(profileSession, options = {}) {
+  const prefs = {
     contextIsolation: true,
     nodeIntegration: false,
-    nodeIntegrationInSubFrames: true,
+    nodeIntegrationInSubFrames: false,
     session: profileSession,
     plugins: true,
     backgroundThrottling: shouldThrottleBackgroundTabs()
   };
+
+  if (!options.cleanGoogleAuth) {
+    prefs.preload = path.join(__dirname, '../preload.js');
+  }
+
+  return prefs;
+}
+
+function createManagedView(profileSession, options = {}) {
+  return new WebContentsView({
+    webPreferences: createTabWebPreferences(profileSession, options)
+  });
+}
+
+function shouldUseCleanGoogleAuthView(targetUrl, referrerUrl = '') {
+  if (!targetUrl || !/^https?:/i.test(String(targetUrl))) return false;
+  return adblock.isGoogleAuth(targetUrl, referrerUrl);
 }
 
 function applyBackgroundTabThrottling() {
@@ -932,11 +882,102 @@ function applyCustomCssToOpenTabs(css) {
   });
 }
 
+function applyBoundsToManagedView(win, tab, view, isSplitSide) {
+  if (!win || !view) return;
+  const bounds = windowBounds[win.id] || { x: 0, y: 0, width: 0, height: 0 };
+  if (bounds.width <= 0 || bounds.height <= 0) return;
+
+  if (tab.splitView) {
+    const halfWidth = Math.floor(bounds.width / 2);
+    view.setBounds({
+      x: isSplitSide ? bounds.x + halfWidth : bounds.x,
+      y: bounds.y,
+      width: isSplitSide ? bounds.width - halfWidth : halfWidth,
+      height: bounds.height
+    });
+    return;
+  }
+
+  view.setBounds(bounds);
+}
+
+function replaceViewForNavigation(tab, view, isSplitSide, targetUrl, cleanGoogleAuth) {
+  if (!tab || !view || !targetUrl) return false;
+
+  const previousView = isSplitSide ? tab.splitView : tab.view;
+  if (previousView !== view) return false;
+
+  const viewSession = previousView.webContents?.session || getSessionForSpace(tab.space, tab.isIncognito);
+  const nextView = createManagedView(viewSession, { cleanGoogleAuth });
+
+  if (!isSplitSide && tab.zoomFactor && tab.zoomFactor !== 1.0) {
+    nextView.webContents.setZoomFactor(tab.zoomFactor);
+  }
+
+  if (isSplitSide) {
+    tab.splitView = nextView;
+    tab.splitUsesCleanGoogleAuthView = cleanGoogleAuth;
+    tab.splitUrl = targetUrl;
+  } else {
+    tab.view = nextView;
+    tab.usesCleanGoogleAuthView = cleanGoogleAuth;
+    tab.url = targetUrl;
+  }
+
+  setupViewListeners(tab, nextView, isSplitSide);
+
+  const win = BrowserWindow.fromId(tab.windowId);
+  if (win && previousView && win.contentView.children.includes(previousView)) {
+    win.contentView.removeChildView(previousView);
+  }
+
+  if (win && activeTabs[win.id] === tab.id && !win.contentView.children.includes(nextView)) {
+    win.contentView.addChildView(nextView);
+    applyBoundsToManagedView(win, tab, nextView, isSplitSide);
+  }
+
+  if (previousView?.webContents && !previousView.webContents.isDestroyed()) {
+    previousView.__osloAllowClose = true;
+    previousView.webContents.close();
+  }
+
+  nextView.webContents.loadURL(targetUrl).catch(error => {
+    console.error('Failed to reload tab with updated web preferences:', error);
+  });
+
+  if (win && !isSplitSide) {
+    sendToUI(win, 'ui-tab-updated', { id: tab.id, url: targetUrl, isLoading: true });
+  }
+
+  return true;
+}
+
+function maybeSwitchViewForNavigation(tab, view, isSplitSide, targetUrl, referrerUrl, event) {
+  const targetCleanGoogleAuth = shouldUseCleanGoogleAuthView(targetUrl, referrerUrl);
+  const currentCleanGoogleAuth = isSplitSide ? !!tab.splitUsesCleanGoogleAuthView : !!tab.usesCleanGoogleAuthView;
+  if (targetCleanGoogleAuth === currentCleanGoogleAuth) return false;
+
+  if (event && typeof event.preventDefault === 'function') {
+    event.preventDefault();
+  }
+
+  return replaceViewForNavigation(tab, view, isSplitSide, targetUrl, targetCleanGoogleAuth);
+}
+
 function setupViewListeners(tab, view, isSplitSide) {
   if (!view) return;
   const wc = view.webContents;
   const tabId = tab.id;
   const getWin = () => BrowserWindow.fromId(tab.windowId);
+
+  wc.on('will-navigate', (event, navigationUrl) => {
+    maybeSwitchViewForNavigation(tab, view, isSplitSide, navigationUrl, wc.getURL(), event);
+  });
+
+  wc.on('will-redirect', (event, navigationUrl, isInPlace, isMainFrame) => {
+    if (isMainFrame === false) return;
+    maybeSwitchViewForNavigation(tab, view, isSplitSide, navigationUrl, wc.getURL(), event);
+  });
 
   wc.on('did-start-loading', () => {
     const isActive = isSplitSide ? (tab.activeSplitSide === 'split') : (tab.activeSplitSide === 'main');
@@ -1093,15 +1134,7 @@ function setupViewListeners(tab, view, isSplitSide) {
         action: 'allow',
         overrideBrowserWindowOptions: {
           autoHideMenuBar: true,
-          webPreferences: {
-            preload: path.join(__dirname, '../preload.js'),
-            contextIsolation: true,
-            nodeIntegration: false,
-            nodeIntegrationInSubFrames: true,
-            session: wc.session,
-            plugins: true,
-            backgroundThrottling: shouldThrottleBackgroundTabs()
-          }
+          webPreferences: createTabWebPreferences(wc.session, { cleanGoogleAuth: isGoogleAuthPopup })
         }
       };
     }
@@ -1307,6 +1340,7 @@ function setupViewListeners(tab, view, isSplitSide) {
   });
 
   wc.on('close', (e) => {
+    if (view.__osloAllowClose) return;
     e.preventDefault();
     closeTab(tabId);
   });
@@ -1325,10 +1359,10 @@ function createTab(url, isIncognito = false, space = 'Genel', winId = null, tabI
   const initialZoom = typeof zoomFactor === 'number' ? zoomFactor : defaultZoom;
 
   const viewSession = getSessionForSpace(space, isIncognito);
+  const formattedInitialUrl = url ? formatUrl(url) : '';
+  const usesCleanGoogleAuthView = shouldUseCleanGoogleAuthView(formattedInitialUrl);
 
-  const view = new WebContentsView({
-    webPreferences: createTabWebPreferences(viewSession)
-  });
+  const view = createManagedView(viewSession, { cleanGoogleAuth: usesCleanGoogleAuthView });
 
   const lang = settingsStore.get('language') || 'tr';
   const defaultTitle = lang === 'tr' ? 'Yeni Sekme' : (lang === 'fr' ? 'Nouvel Onglet' : 'New Tab');
@@ -1338,6 +1372,7 @@ function createTab(url, isIncognito = false, space = 'Genel', winId = null, tabI
     view: view,
     splitView: null,
     splitUrl: '',
+    splitUsesCleanGoogleAuthView: false,
     activeSplitSide: 'main',
     url: url || '',
     title: defaultTitle,
@@ -1348,7 +1383,8 @@ function createTab(url, isIncognito = false, space = 'Genel', winId = null, tabI
     lastActive: Date.now(),
     isSleeping: false,
     isPinned: isPinned,
-    zoomFactor: initialZoom
+    zoomFactor: initialZoom,
+    usesCleanGoogleAuthView
   };
 
   tabs[finalTabId] = tab;
@@ -1372,8 +1408,8 @@ function createTab(url, isIncognito = false, space = 'Genel', winId = null, tabI
   setupTabListeners(tab);
 
   // Load the initial URL or local newtab.html
-  if (url) {
-    view.webContents.loadURL(formatUrl(url));
+  if (formattedInitialUrl) {
+    view.webContents.loadURL(formattedInitialUrl);
   } else {
     view.webContents.loadFile(path.join(__dirname, '../newtab/newtab.html'));
   }
@@ -1513,9 +1549,20 @@ async function sleepTab(tabId) {
       // Ignore
     }
 
+    try {
+      const pid = tab.view.webContents.getOSProcessId();
+      const metric = app.getAppMetrics().find(item => item.pid === pid);
+      const memory = metric?.memory || {};
+      const bytes = Number(memory.workingSetSize || memory.privateBytes || 0) || 0;
+      tab.sleepSavedMemoryMb = Math.round((bytes / 1024) * 10) / 10;
+    } catch (e) {
+      tab.sleepSavedMemoryMb = 0;
+    }
+
     if (win && win.contentView.children.includes(tab.view)) {
       win.contentView.removeChildView(tab.view);
     }
+    tab.view.__osloAllowClose = true;
     tab.view.webContents.close();
     tab.view = null;
   }
@@ -1528,19 +1575,21 @@ function wakeTab(tabId) {
   if (!tab || !tab.isSleeping) return;
 
   const viewSession = getSessionForSpace(tab.space, tab.isIncognito);
+  const formattedUrl = tab.url ? formatUrl(tab.url) : '';
+  const usesCleanGoogleAuthView = shouldUseCleanGoogleAuthView(formattedUrl);
 
-  const view = new WebContentsView({
-    webPreferences: createTabWebPreferences(viewSession)
-  });
+  const view = createManagedView(viewSession, { cleanGoogleAuth: usesCleanGoogleAuthView });
 
   tab.view = view;
+  tab.usesCleanGoogleAuthView = usesCleanGoogleAuthView;
+  tab.sleepSavedMemoryMb = 0;
   tab.isSleeping = false;
   tab.lastActive = Date.now();
 
   setupTabListeners(tab);
 
-  if (tab.url) {
-    view.webContents.loadURL(formatUrl(tab.url));
+  if (formattedUrl) {
+    view.webContents.loadURL(formattedUrl);
   } else {
     view.webContents.loadFile(path.join(__dirname, '../newtab/newtab.html'));
   }
@@ -2149,6 +2198,111 @@ function saveSession() {
   sessionStore.set('tabOrders', tabOrders);
 }
 
+const DOWNLOAD_RISK_EXTENSIONS = new Set(['exe', 'msi', 'bat', 'cmd', 'ps1', 'vbs', 'js', 'jar', 'scr', 'com', 'reg']);
+
+function createDownloadSecurityReport(fileName, mode, lang = 'tr') {
+  const extension = path.extname(fileName || '').replace('.', '').toLowerCase();
+  const isRisky = DOWNLOAD_RISK_EXTENSIONS.has(extension);
+  const messages = {
+    tr: {
+      safe: 'Yaygın riskli çalıştırılabilir dosya uzantısı algılanmadı.',
+      riskyType: (ext) => `.${ext} dosyaları kod çalıştırabilir veya sistem ayarlarını değiştirebilir.`,
+      riskyTrust: 'Bu dosyayı yalnızca kaynağına güveniyorsanız ve indirmeyi bekliyorsanız açın.',
+      blocked: 'OSLO güvenli indirme koruması tarafından engellendi.',
+      verify: 'Açmadan önce yayıncıyı ve dosya hash değerini doğrulayın.'
+    },
+    en: {
+      safe: 'No common risky executable extension was detected.',
+      riskyType: (ext) => `.${ext} files can run code or change system settings.`,
+      riskyTrust: 'Only open this file if you trust the source and expected the download.',
+      blocked: 'Blocked by OSLO download protection.',
+      verify: 'Verify the publisher and file hash before opening.'
+    },
+    fr: {
+      safe: 'Aucune extension exécutable couramment risquée n’a été détectée.',
+      riskyType: (ext) => `Les fichiers .${ext} peuvent exécuter du code ou modifier les paramètres système.`,
+      riskyTrust: 'Ouvrez ce fichier uniquement si vous faites confiance à la source et attendiez ce téléchargement.',
+      blocked: 'Bloqué par la protection de téléchargement OSLO.',
+      verify: 'Vérifiez l’éditeur et le hash du fichier avant de l’ouvrir.'
+    }
+  };
+  const text = messages[lang] || messages.en;
+
+  if (!isRisky) {
+    return {
+      risk: 'low',
+      extension,
+      action: 'allowed',
+      reasons: [],
+      recommendation: text.safe
+    };
+  }
+
+  const action = mode === 'block' ? 'blocked' : (mode === 'warn' ? 'warned' : 'allowed');
+  return {
+    risk: 'high',
+    extension,
+    action,
+    reasons: [
+      text.riskyType(extension),
+      text.riskyTrust
+    ],
+    recommendation: mode === 'block' ? text.blocked : text.verify
+  };
+}
+
+function getDownloadRuntimeStats(download, receivedBytes) {
+  const now = Date.now();
+  const received = Number(receivedBytes) || 0;
+  const elapsedSeconds = Math.max((now - (download.startedAt || now)) / 1000, 0.001);
+  const averageSpeed = received / elapsedSeconds;
+  let instantSpeed = averageSpeed;
+
+  if (download.lastProgressAt && now > download.lastProgressAt) {
+    const deltaBytes = Math.max(0, received - (download.lastReceivedBytes || 0));
+    const deltaSeconds = Math.max((now - download.lastProgressAt) / 1000, 0.001);
+    instantSpeed = deltaBytes / deltaSeconds;
+  }
+
+  download.lastProgressAt = now;
+  download.lastReceivedBytes = received;
+
+  const speedBps = Math.max(0, Math.round(instantSpeed || averageSpeed || 0));
+  const remaining = Math.max(0, (download.total || 0) - received);
+  const etaSeconds = speedBps > 0 && download.total > 0 ? Math.ceil(remaining / speedBps) : null;
+  return { speedBps, etaSeconds };
+}
+
+function calculateFileHash(filePath, algorithm = 'sha256') {
+  return new Promise((resolve, reject) => {
+    const fs = require('fs');
+    const hash = crypto.createHash(algorithm);
+    const stream = fs.createReadStream(filePath);
+    stream.on('error', reject);
+    stream.on('data', chunk => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
+function normalizeExpectedHash(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^sha(?:-?256)?[:=\s]+/i, '')
+    .replace(/[^a-f0-9]/g, '');
+}
+
+function updateStoredDownload(downloadId, patch) {
+  const downloads = downloadsStore.get('downloads') || [];
+  const idx = downloads.findIndex(item => String(item.id) === String(downloadId));
+  if (idx >= 0) {
+    downloads[idx] = { ...downloads[idx], ...patch };
+    downloadsStore.set('downloads', downloads);
+    return downloads[idx];
+  }
+  return null;
+}
+
 // Download manager handler
 function setupDownloadListener(sessionInstance, isIncognito = false) {
   sessionInstance.on('will-download', (event, item, webContents) => {
@@ -2157,9 +2311,11 @@ function setupDownloadListener(sessionInstance, isIncognito = false) {
     const fileName = rawFileName.replace(/[\\/:*?"<>|]/g, '_');
     const totalBytes = item.getTotalBytes();
     const downloadId = Date.now();
-    const dangerousExtensions = new Set(['exe', 'msi', 'bat', 'cmd', 'ps1', 'vbs', 'js', 'jar', 'scr', 'com', 'reg']);
     const fileExtension = path.extname(fileName).replace('.', '').toLowerCase();
     const dangerousMode = settingsStore.get('dangerousDownloadsProtection') || 'warn';
+    const lang = settingsStore.get('language') || 'tr';
+    const sourceUrl = typeof item.getURL === 'function' ? item.getURL() : '';
+    const securityReport = createDownloadSecurityReport(fileName, dangerousMode, lang);
 
     let win = null;
     try {
@@ -2174,7 +2330,7 @@ function setupDownloadListener(sessionInstance, isIncognito = false) {
 
     const safeWin = (win && !win.isDestroyed()) ? win : null;
 
-    if (dangerousExtensions.has(fileExtension) && dangerousMode === 'block') {
+    if (DOWNLOAD_RISK_EXTENSIONS.has(fileExtension) && dangerousMode === 'block') {
       event.preventDefault();
       sendToUI(safeWin, 'download-progress', {
         id: downloadId,
@@ -2182,12 +2338,15 @@ function setupDownloadListener(sessionInstance, isIncognito = false) {
         status: 'cancelled',
         progress: 0,
         received: 0,
-        total: totalBytes
+        total: totalBytes,
+        url: sourceUrl,
+        canRetry: !!sourceUrl,
+        hashStatus: 'unavailable',
+        securityReport
       });
       return;
     }
 
-    const lang = settingsStore.get('language') || 'tr';
     const title = lang === 'tr' ? 'Farklı Kaydet' : (lang === 'fr' ? 'Enregistrer sous' : 'Save As');
 
     const downloadsDir = app.getPath('downloads');
@@ -2214,10 +2373,15 @@ function setupDownloadListener(sessionInstance, isIncognito = false) {
       item,
       win: safeWin,
       name: fileName,
-      total: totalBytes
+      total: totalBytes,
+      url: sourceUrl,
+      startedAt: Date.now(),
+      lastProgressAt: Date.now(),
+      lastReceivedBytes: 0,
+      securityReport
     };
 
-    if (dangerousExtensions.has(fileExtension) && dangerousMode === 'warn') {
+    if (DOWNLOAD_RISK_EXTENSIONS.has(fileExtension) && dangerousMode === 'warn') {
       const lang = settingsStore.get('language') || 'tr';
       const titleWarn = lang === 'tr' ? 'Güvenli İndirme Uyarısı' : (lang === 'fr' ? 'Avertissement de téléchargement' : 'Download Safety Warning');
       const messageWarn = lang === 'tr'
@@ -2251,46 +2415,90 @@ function setupDownloadListener(sessionInstance, isIncognito = false) {
       status: 'progressing',
       progress: 0,
       received: 0,
-      total: totalBytes
+      total: totalBytes,
+      url: sourceUrl,
+      speedBps: 0,
+      etaSeconds: null,
+      hashStatus: 'pending',
+      securityReport
     });
 
     item.on('updated', (event, state) => {
+      const download = activeDownloads[downloadId];
       if (state === 'interrupted') {
         sendToUI(safeWin, 'download-progress', {
           id: downloadId,
           name: fileName,
           status: 'interrupted',
-          progress: 0
+          progress: 0,
+          url: sourceUrl,
+          canRetry: !!sourceUrl,
+          hashStatus: 'unavailable',
+          securityReport
         });
       } else if (state === 'progressing') {
-        const progress = totalBytes > 0 ? Math.round((item.getReceivedBytes() / totalBytes) * 100) : 0;
+        const received = item.getReceivedBytes();
+        const progress = totalBytes > 0 ? Math.round((received / totalBytes) * 100) : 0;
+        const stats = download ? getDownloadRuntimeStats(download, received) : { speedBps: 0, etaSeconds: null };
+        const paused = item.isPaused();
         sendToUI(safeWin, 'download-progress', {
           id: downloadId,
           name: fileName,
-          status: item.isPaused() ? 'paused' : 'progressing',
+          status: paused ? 'paused' : 'progressing',
           progress: progress,
-          received: item.getReceivedBytes(),
-          total: totalBytes
+          received,
+          total: totalBytes,
+          url: sourceUrl,
+          speedBps: paused ? 0 : stats.speedBps,
+          etaSeconds: paused ? null : stats.etaSeconds,
+          hashStatus: 'pending',
+          securityReport
         });
       }
     });
 
     item.once('done', (event, state) => {
       delete activeDownloads[downloadId];
+      const finalPath = state === 'completed' ? item.getSavePath() : '';
       const dlEntry = {
         id: downloadId,
         name: fileName,
         status: state === 'completed' ? 'completed' : (state === 'cancelled' ? 'cancelled' : 'failed'),
         progress: state === 'completed' ? 100 : 0,
-        path: state === 'completed' ? item.getSavePath() : '',
+        path: finalPath,
+        url: sourceUrl,
         received: item.getReceivedBytes(),
         total: totalBytes,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        speedBps: 0,
+        etaSeconds: null,
+        canRetry: state !== 'completed' && !!sourceUrl,
+        hashStatus: state === 'completed' ? 'calculating' : 'unavailable',
+        hashAlgorithm: 'sha256',
+        securityReport
       };
       if (!(isIncognito && settingsStore.get('incognitoForgetDownloads') !== false)) {
         downloadsStore.push('downloads', dlEntry);
       }
       sendToUI(safeWin, 'download-progress', dlEntry);
+
+      if (state === 'completed' && finalPath) {
+        calculateFileHash(finalPath, 'sha256').then(hash => {
+          const hashPatch = { hash, hashAlgorithm: 'sha256', hashStatus: 'ready' };
+          const updatedEntry = { ...dlEntry, ...hashPatch };
+          if (!(isIncognito && settingsStore.get('incognitoForgetDownloads') !== false)) {
+            updateStoredDownload(downloadId, hashPatch);
+          }
+          sendToUI(safeWin, 'download-progress', updatedEntry);
+        }).catch(error => {
+          const hashPatch = { hashStatus: 'failed', hashError: error.message || String(error) };
+          const updatedEntry = { ...dlEntry, ...hashPatch };
+          if (!(isIncognito && settingsStore.get('incognitoForgetDownloads') !== false)) {
+            updateStoredDownload(downloadId, hashPatch);
+          }
+          sendToUI(safeWin, 'download-progress', updatedEntry);
+        });
+      }
     });
   });
 }
@@ -2358,7 +2566,15 @@ ipcMain.on('tab-navigate', (event, { tabId, url }) => {
     if (targetUrl === 'oslo://newtab' || targetUrl === '') {
       targetView.webContents.loadFile(path.join(__dirname, '../newtab/newtab.html'));
     } else {
-      targetView.webContents.loadURL(formatUrl(targetUrl));
+      const formattedTarget = formatUrl(targetUrl);
+      const needsCleanGoogleAuth = shouldUseCleanGoogleAuthView(formattedTarget);
+      const currentCleanGoogleAuth = isSplit ? !!tab.splitUsesCleanGoogleAuthView : !!tab.usesCleanGoogleAuthView;
+
+      if (needsCleanGoogleAuth !== currentCleanGoogleAuth) {
+        replaceViewForNavigation(tab, targetView, isSplit, formattedTarget, needsCleanGoogleAuth);
+      } else {
+        targetView.webContents.loadURL(formattedTarget);
+      }
     }
   }
 });
@@ -2412,18 +2628,20 @@ ipcMain.on('tab-update-space', (event, { tabId, space }) => {
       if (win && win.contentView.children.includes(oldView)) {
         win.contentView.removeChildView(oldView);
       }
+      oldView.__osloAllowClose = true;
       oldView.webContents.close();
 
-      const view = new WebContentsView({
-        webPreferences: createTabWebPreferences(getSessionForSpace(space, false))
-      });
+      const formattedCurrentUrl = currentUrl && !currentUrl.includes('newtab.html') ? formatUrl(currentUrl) : '';
+      const usesCleanGoogleAuthView = shouldUseCleanGoogleAuthView(formattedCurrentUrl);
+      const view = createManagedView(getSessionForSpace(space, false), { cleanGoogleAuth: usesCleanGoogleAuthView });
 
       tab.view = view;
+      tab.usesCleanGoogleAuthView = usesCleanGoogleAuthView;
       setupTabListeners(tab);
       view.webContents.setZoomFactor(tab.zoomFactor || parseFloat(settingsStore.get('defaultPageZoom')) || 1.0);
 
-      if (currentUrl && !currentUrl.includes('newtab.html')) {
-        view.webContents.loadURL(formatUrl(currentUrl));
+      if (formattedCurrentUrl) {
+        view.webContents.loadURL(formattedCurrentUrl);
       } else {
         view.webContents.loadFile(path.join(__dirname, '../newtab/newtab.html'));
       }
@@ -2574,12 +2792,11 @@ ipcMain.on('tab-toggle-split', (event, tabId) => {
   } else {
     // Turn split screen ON
     const viewSession = getSessionForSpace(tab.space, tab.isIncognito);
-    const splitView = new WebContentsView({
-      webPreferences: createTabWebPreferences(viewSession)
-    });
+    const splitView = createManagedView(viewSession);
 
     tab.splitView = splitView;
     tab.splitUrl = 'oslo://newtab';
+    tab.splitUsesCleanGoogleAuthView = false;
     tab.activeSplitSide = 'split';
 
     setupViewListeners(tab, splitView, true);
@@ -2761,12 +2978,19 @@ function buildNativeBookmarksMenu(bookmarks, folderId, win) {
         click: () => {
           const activeTabId = activeTabs[win.id];
           if (activeTabId && tabs[activeTabId]) {
+            const tab = tabs[activeTabId];
             const targetUrl = b.url || '';
-            if (tabs[activeTabId].isSleeping) {
+            if (tab.isSleeping) {
               wakeTab(activeTabId);
             }
-            if (tabs[activeTabId].view) {
-              tabs[activeTabId].view.webContents.loadURL(formatUrl(targetUrl));
+            if (tab.view) {
+              const formattedTarget = formatUrl(targetUrl);
+              const needsCleanGoogleAuth = shouldUseCleanGoogleAuthView(formattedTarget);
+              if (needsCleanGoogleAuth !== !!tab.usesCleanGoogleAuthView) {
+                replaceViewForNavigation(tab, tab.view, false, formattedTarget, needsCleanGoogleAuth);
+              } else {
+                tab.view.webContents.loadURL(formattedTarget);
+              }
             }
           }
         }
@@ -3341,7 +3565,8 @@ ipcMain.handle('system-info-get', (event) => {
     totalMem: Math.round(os.totalmem() / (1024 * 1024 * 1024)) + ' GB',
     freeMem: Math.round(os.freemem() / (1024 * 1024 * 1024)) + ' GB',
     cpuModel: os.cpus()[0]?.model || 'Unknown',
-    uptime: Math.round(os.uptime() / 3600) + ' hours'
+    uptime: Math.round(os.uptime() / 3600) + ' hours',
+    performanceSnapshot: getPerformanceSnapshot()
   };
 });
 
@@ -3457,6 +3682,62 @@ ipcMain.handle('site-data-clear', async (event, domain) => {
   return { success: true };
 });
 
+ipcMain.handle('site-security-summary-get', async (event, payload = {}) => {
+  assertMainUiSender(event);
+  const tabId = payload && payload.tabId;
+  const rawUrl = String(payload?.url || '');
+  const tab = tabId ? tabs[tabId] : null;
+  const targetUrl = rawUrl || tab?.url || '';
+
+  let parsed = null;
+  try {
+    parsed = new URL(targetUrl);
+  } catch (error) { }
+
+  const hostname = parsed?.hostname || '';
+  const protocol = parsed?.protocol || '';
+  const isWeb = !!hostname && (protocol === 'https:' || protocol === 'http:');
+  const targetSession = tab?.view?.webContents?.session || session.defaultSession;
+  const cookies = isWeb ? await targetSession.cookies.get({}).catch(() => []) : [];
+  const siteCookies = cookies.filter(cookie => isCookieForHost(cookie, hostname));
+  const savedPermissions = permissionsStore.get('permissions') || {};
+  const permissionTypes = ['notifications', 'camera', 'microphone', 'location', 'clipboard'];
+  const permissions = {};
+  permissionTypes.forEach(permission => {
+    const decision = savedPermissions[`${hostname}:${permission}`];
+    permissions[permission] = decision === true ? 'allow' : (decision === false ? 'block' : 'default');
+  });
+
+  const certificateExceptions = certificateExceptionsStore.get('exceptions') || {};
+  const certificateException = !!certificateExceptions[hostname];
+  const httpsOnlyEnabled = settingsStore.get('httpsOnlyEnabled') || false;
+
+  return {
+    url: targetUrl,
+    hostname,
+    protocol,
+    isWeb,
+    isSecure: protocol === 'https:',
+    httpsOnlyEnabled,
+    certificate: {
+      status: protocol === 'https:' ? (certificateException ? 'exception' : 'valid') : (isWeb ? 'not-secure' : 'local'),
+      hasException: certificateException
+    },
+    protection: {
+      blockedCount: siteBlockedCounts.get(hostname) || 0,
+      adBlockEnabled: adblock.isAdBlockEnabled(),
+      trackingProtectionLevel: settingsStore.get('trackingProtectionLevel') || 'balanced',
+      cookiePolicy: settingsStore.get('cookiePolicy') || 'block-third-party'
+    },
+    cookies: {
+      total: siteCookies.length,
+      secure: siteCookies.filter(cookie => cookie.secure).length,
+      session: siteCookies.filter(cookie => !cookie.expirationDate).length
+    },
+    permissions
+  };
+});
+
 ipcMain.handle('certificate-exceptions-get', (event) => {
   assertMainUiSender(event);
   return certificateExceptionsStore.get('exceptions') || {};
@@ -3485,6 +3766,148 @@ ipcMain.handle('downloads-clear', (event) => {
   assertMainUiSender(event);
   downloadsStore.set('downloads', []);
   return [];
+});
+
+ipcMain.handle('download-verify-hash', async (event, payload = {}) => {
+  assertMainUiSender(event);
+  const id = payload && payload.id;
+  const expectedHash = normalizeExpectedHash(payload && payload.expectedHash);
+  const downloads = downloadsStore.get('downloads') || [];
+  const record = downloads.find(item => String(item.id) === String(id));
+  if (!record || !record.path) {
+    return { success: false, message: 'download_not_found' };
+  }
+
+  try {
+    const actualHash = await calculateFileHash(record.path, 'sha256');
+    const hashPatch = {
+      hash: actualHash,
+      hashAlgorithm: 'sha256',
+      hashStatus: expectedHash ? (actualHash === expectedHash ? 'verified' : 'mismatch') : 'ready',
+      expectedHash: expectedHash || ''
+    };
+    const updated = updateStoredDownload(id, hashPatch) || { ...record, ...hashPatch };
+    const win = BrowserWindow.fromWebContents(event.sender);
+    sendToUI(win, 'download-progress', updated);
+    return {
+      success: true,
+      hash: actualHash,
+      expectedHash,
+      matches: expectedHash ? actualHash === expectedHash : null,
+      status: hashPatch.hashStatus
+    };
+  } catch (error) {
+    const hashPatch = {
+      hashStatus: 'failed',
+      hashError: error.message || String(error)
+    };
+    updateStoredDownload(id, hashPatch);
+    return { success: false, message: hashPatch.hashError };
+  }
+});
+
+ipcMain.on('download-retry', (event, id) => {
+  if (ignoreUntrustedMainUiSender(event, 'download-retry')) return;
+  const downloads = downloadsStore.get('downloads') || [];
+  const record = downloads.find(item => String(item.id) === String(id));
+  if (!record || !record.url) return;
+
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const activeTabId = win ? activeTabs[win.id] : null;
+  const tab = activeTabId ? tabs[activeTabId] : null;
+  const targetView = tab?.activeSplitSide === 'split' && tab?.splitView ? tab.splitView : tab?.view;
+  try {
+    if (targetView?.webContents && !targetView.webContents.isDestroyed()) {
+      targetView.webContents.downloadURL(record.url);
+    } else {
+      createAndNotifyTab(record.url, false, tab?.space || 'Genel', win ? win.id : null);
+    }
+  } catch (error) {
+    console.error('[Download Manager] Failed to retry download:', error);
+  }
+});
+
+function getTabResourceSnapshot(targetTabId = null) {
+  const metrics = app.getAppMetrics();
+  const metricsByPid = new Map(metrics.map(metric => [metric.pid, metric]));
+  const targetId = targetTabId == null ? null : String(targetTabId);
+
+  const toMb = (value) => {
+    const number = Number(value) || 0;
+    return Math.round((number / 1024) * 10) / 10;
+  };
+
+  return Object.values(tabs).filter(tab => !targetId || String(tab.id) === targetId).map(tab => {
+    let pid = 0;
+    let metric = null;
+    let currentUrl = tab.url || '';
+
+    try {
+      if (tab.view?.webContents && !tab.view.webContents.isDestroyed()) {
+        pid = tab.view.webContents.getOSProcessId();
+        metric = metricsByPid.get(pid) || null;
+        currentUrl = tab.view.webContents.getURL() || currentUrl;
+      }
+    } catch (error) { }
+
+    const memory = metric?.memory || {};
+    const cpu = metric?.cpu || {};
+    const sleepSavedMemoryMb = Number(tab.sleepSavedMemoryMb) || 0;
+    const workingSetMb = tab.isSleeping ? 0 : toMb(memory.workingSetSize || 0);
+    const privateMemoryMb = tab.isSleeping ? 0 : toMb(memory.privateBytes || 0);
+    const peakMemoryMb = tab.isSleeping ? sleepSavedMemoryMb : toMb(memory.peakWorkingSetSize || memory.workingSetSize || 0);
+    const memoryMb = tab.isSleeping ? 0 : (workingSetMb || privateMemoryMb || 0);
+    const cpuPercent = tab.isSleeping ? 0 : Math.round((Number(cpu.percentCPUUsage) || 0) * 10) / 10;
+    const idleWakeups = tab.isSleeping ? 0 : Math.round((Number(cpu.idleWakeupsPerSecond) || 0) * 10) / 10;
+    const win = tab.windowId ? BrowserWindow.fromId(tab.windowId) : null;
+    const isActive = !!(win && activeTabs[win.id] === tab.id);
+    const lastActiveAt = Number(tab.lastActive) || Date.now();
+    const inactiveSeconds = isActive ? 0 : Math.max(0, Math.round((Date.now() - lastActiveAt) / 1000));
+
+    return {
+      id: tab.id,
+      title: tab.title || currentUrl || 'Yeni Sekme',
+      url: currentUrl,
+      space: tab.space || 'Genel',
+      windowId: tab.windowId || null,
+      pid,
+      processType: metric?.type || '',
+      memoryMb,
+      workingSetMb,
+      privateMemoryMb,
+      peakMemoryMb,
+      sleepSavedMemoryMb,
+      cpuPercent,
+      idleWakeups,
+      isActive,
+      isSleeping: !!tab.isSleeping,
+      isPinned: !!tab.isPinned,
+      isPlayingAudio: !!tab.isPlayingAudio,
+      isLoading: !!(tab.isLoading || tab.isSplitLoading),
+      hasSplit: !!tab.splitView,
+      zoomFactor: tab.zoomFactor || 1,
+      lastActiveAt,
+      inactiveSeconds,
+      canSleep: !isActive && !tab.isSleeping
+    };
+  }).sort((a, b) => (b.memoryMb + b.cpuPercent * 10) - (a.memoryMb + a.cpuPercent * 10));
+}
+
+ipcMain.handle('task-manager-tabs-get', (event) => {
+  assertMainUiSender(event);
+  return {
+    generatedAt: Date.now(),
+    tabs: getTabResourceSnapshot()
+  };
+});
+
+ipcMain.handle('task-manager-tab-get', (event, tabId) => {
+  assertMainUiSender(event);
+  const [tab] = getTabResourceSnapshot(tabId);
+  return {
+    generatedAt: Date.now(),
+    tab: tab || null
+  };
 });
 
 ipcMain.handle('spaces-get', (event) => {
@@ -4224,7 +4647,11 @@ ipcMain.on('download-pause', (event, id) => {
         status: 'paused',
         progress: Math.max(0, Math.min(Math.round(item.getPercentComplete()) || 0, 100)),
         received: item.getReceivedBytes(),
-        total: download.total
+        total: download.total,
+        url: download.url,
+        speedBps: 0,
+        etaSeconds: null,
+        securityReport: download.securityReport
       });
     } catch (err) {
       console.error('[Download Manager] Failed to pause download:', err);
@@ -4244,7 +4671,11 @@ ipcMain.on('download-resume', (event, id) => {
         status: 'progressing',
         progress: Math.max(0, Math.min(Math.round(item.getPercentComplete()) || 0, 100)),
         received: item.getReceivedBytes(),
-        total: download.total
+        total: download.total,
+        url: download.url,
+        speedBps: 0,
+        etaSeconds: null,
+        securityReport: download.securityReport
       });
     } catch (err) {
       console.error('[Download Manager] Failed to resume download:', err);
@@ -4264,7 +4695,11 @@ ipcMain.on('download-cancel', (event, id) => {
         status: 'cancelled',
         progress: 0,
         received: item.getReceivedBytes(),
-        total: download.total
+        total: download.total,
+        url: download.url,
+        canRetry: !!download.url,
+        hashStatus: 'unavailable',
+        securityReport: download.securityReport
       });
     } catch (err) {
       console.error('[Download Manager] Failed to cancel download:', err);
@@ -4403,11 +4838,16 @@ app.whenReady().then(() => {
   syncNetworkPrivacyOptions();
 
   // Sync adblocker callback
-  adblock.setOnBlockCallback((url) => {
+  adblock.setOnBlockCallback((url, details = {}) => {
     const current = settingsStore.get('blockedCount') || 0;
+    const siteHost = getSiteHostFromRequest(details, url);
+    const blockedHost = normalizeHostname(url);
+    if (siteHost) {
+      siteBlockedCounts.set(siteHost, (siteBlockedCounts.get(siteHost) || 0) + 1);
+    }
     settingsStore.set('blockedCount', current + 1);
     windows.forEach(win => {
-      sendToUI(win, 'ad-blocked', { url, total: current + 1 });
+      sendToUI(win, 'ad-blocked', { url, total: current + 1, siteHost, blockedHost });
     });
   });
 

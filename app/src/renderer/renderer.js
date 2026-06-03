@@ -4,6 +4,9 @@ import { applyLanguage, translations } from './js/i18n.js';
 import { renderTabs, updateBookmarkIcon } from './js/tabs.js';
 import { initPanels, renderBookmarks, renderBookmarksBar, renderHistory, renderDownloads } from './js/panels.js';
 import { initSettings, syncContentAreaSurface } from './js/settings.js';
+import { installNativeAlertBridge } from './js/modal-dialogs.js';
+
+installNativeAlertBridge('OSLO Browser');
 
 // Detect Windows OS to apply workaround for backdrop-filter rendering bugs
 if (navigator.userAgent.includes('Windows') || navigator.userAgent.includes('win32') || navigator.platform.toLowerCase().includes('win')) {
@@ -1986,6 +1989,8 @@ function resetUpdateModalUi() {
   const progressPercent = document.getElementById('update-progress-percent');
   const currentVersionLabel = document.querySelector('.version-chip.current .version-label');
   const latestVersionLabel = document.querySelector('.version-chip.latest .version-label');
+  const latestVersionChip = document.querySelector('.version-chip.latest');
+  const versionArrow = document.querySelector('.version-arrow');
 
   if (footer) footer.style.display = 'flex';
   updateModal?.classList.remove('release-notes-only');
@@ -2001,6 +2006,8 @@ function resetUpdateModalUi() {
   if (progressPercent) progressPercent.textContent = '0%';
   if (currentVersionLabel) currentVersionLabel.textContent = getUpdateText('current-version-label', 'Mevcut');
   if (latestVersionLabel) latestVersionLabel.textContent = getUpdateText('latest-version-label', 'Yeni');
+  if (latestVersionChip) latestVersionChip.style.display = '';
+  if (versionArrow) versionArrow.style.display = '';
 }
 
 function showUpdateModal(info, { notesOnly = false } = {}) {
@@ -2010,13 +2017,17 @@ function showUpdateModal(info, { notesOnly = false } = {}) {
   const modalTitle = document.getElementById('update-modal-title');
   const confirmBtn = document.getElementById('btn-confirm-update');
   const cancelBtn = document.getElementById('btn-cancel-update');
+  const latestVersionChip = document.querySelector('.version-chip.latest');
+  const versionArrow = document.querySelector('.version-arrow');
   const releaseNotes = (info.releaseNotes || '').trim();
 
   resetUpdateModalUi();
   updateModal?.classList.toggle('release-notes-only', !!notesOnly);
+  if (latestVersionChip) latestVersionChip.style.display = notesOnly ? 'none' : '';
+  if (versionArrow) versionArrow.style.display = notesOnly ? 'none' : '';
 
-  if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.2'}`;
-  if (modalVersion) modalVersion.textContent = `v${info.latestVersion || info.currentVersion || '1.0.0-beta.2'}`;
+  if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.3'}`;
+  if (modalVersion) modalVersion.textContent = `v${info.latestVersion || info.currentVersion || '1.0.0-beta.3'}`;
   if (modalNotes) {
     modalNotes.innerHTML = releaseNotes
       ? parseMarkdown(releaseNotes)
@@ -2062,7 +2073,7 @@ document.getElementById('btn-check-updates')?.addEventListener('click', () => {
       const modalVersion = document.getElementById('update-modal-version');
       const modalNotes = document.getElementById('update-modal-notes');
 
-      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.2'}`;
+      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.3'}`;
       if (modalVersion) modalVersion.textContent = `v${info.latestVersion}`;
       if (modalNotes) modalNotes.innerHTML = parseMarkdown(info.releaseNotes);
 
@@ -2125,7 +2136,7 @@ document.getElementById('btn-confirm-update')?.addEventListener('click', () => {
   const url = updateModal?.dataset.downloadUrl;
   const checksum = updateModal?.dataset.checksum || updateModal?.dataset.sha256 || '';
   const checksumAlgorithm = updateModal?.dataset.checksumAlgorithm || (checksum.length === 128 ? 'sha512' : 'sha256');
-  const version = (document.getElementById('update-modal-version')?.textContent || '1.0.0-beta.2').replace(/^v/, '');
+  const version = (document.getElementById('update-modal-version')?.textContent || '1.0.0-beta.3').replace(/^v/, '');
 
   if (!url) {
     window.oslo.openExternalLink('https://oslobrowser.com/download');
@@ -2212,7 +2223,7 @@ function autoCheckForUpdates() {
       const modalVersion = document.getElementById('update-modal-version');
       const modalNotes = document.getElementById('update-modal-notes');
 
-      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.2'}`;
+      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.3'}`;
       if (modalVersion) modalVersion.textContent = `v${info.latestVersion}`;
       if (modalNotes) modalNotes.innerHTML = parseMarkdown(info.releaseNotes);
 
@@ -2262,13 +2273,14 @@ function buildTelemetryReport(logs, systemInfo = {}, options = {}) {
   const allCrashes = getTelemetryArray(logs, 'crashes');
   const payload = {
     generatedAt: new Date().toISOString(),
-    appVersion: systemInfo?.appVersion || '1.0.0-beta.2',
+    appVersion: systemInfo?.appVersion || '1.0.0-beta.3',
     electron: systemInfo?.electron || '',
     chrome: systemInfo?.chrome || '',
     platform: navigator.platform || '',
     language: state.currentLang || '',
     eventCount: allEvents.length,
     crashCount: allCrashes.length,
+    performanceSnapshot: logs?.performanceSnapshot || systemInfo?.performanceSnapshot || null,
     events: allEvents.slice(-maxEvents),
     crashes: allCrashes.slice(-maxCrashes)
   };
@@ -2288,7 +2300,7 @@ function buildTelemetryIssueBody(logs, systemInfo = {}, copiedToClipboard = fals
   return [
     '## OSLO Browser Telemetry Report',
     '',
-    `Version: ${systemInfo?.appVersion || '1.0.0-beta.2'}`,
+    `Version: ${systemInfo?.appVersion || '1.0.0-beta.3'}`,
     `Generated at: ${new Date().toISOString()}`,
     `Events: ${allEvents.length}`,
     `Crashes/errors: ${allCrashes.length}`,
@@ -2704,99 +2716,140 @@ const securityInfoConnIcon = document.getElementById('security-info-conn-icon');
 const securityInfoConnTitle = document.getElementById('security-info-conn-title');
 const securityInfoConnDesc = document.getElementById('security-info-conn-desc');
 const securityInfoPermissionsSection = document.getElementById('security-info-permissions-section');
-const notificationsSelect = document.getElementById('security-info-notifications-select');
+const securityInfoOrigin = document.getElementById('security-info-origin');
+const securityInfoBlockedCount = document.getElementById('security-info-blocked-count');
+const securityInfoCookieCount = document.getElementById('security-info-cookie-count');
+const securityInfoPermissionCount = document.getElementById('security-info-permission-count');
+const securityInfoHttpsStatus = document.getElementById('security-info-https-status');
+const securityInfoCertificateStatus = document.getElementById('security-info-certificate-status');
+const securityInfoCookieSummary = document.getElementById('security-info-cookie-summary');
+const securityInfoCookiePolicy = document.getElementById('security-info-cookie-policy');
+const securityInfoPermissionControls = document.getElementById('security-info-permission-controls');
 
-function showSecurityInfoModal() {
+const SITE_SECURITY_PERMISSION_TYPES = ['notifications', 'camera', 'microphone', 'location', 'clipboard'];
+
+function getPermissionDecisionText(value) {
+  if (value === 'allow') return getUiText('permission-allow-default', 'İzin ver');
+  if (value === 'block') return getUiText('permission-block-default', 'Engelle');
+  return getUiText('permission-default', 'Varsayılan (Sor)');
+}
+
+function getCookiePolicyText(value) {
+  if (value === 'allow') return getUiText('cookie-policy-allow', 'Tüm çerezlere izin ver');
+  if (value === 'block-all') return getUiText('cookie-policy-block-all', 'Tüm çerezleri engelle');
+  return getUiText('cookie-policy-third-party', 'Üçüncü taraf çerezleri engelle');
+}
+
+function getCertificateStatusText(status) {
+  if (status === 'valid') return getUiText('site-security-certificate-valid', 'Geçerli');
+  if (status === 'exception') return getUiText('site-security-certificate-exception', 'İstisna ile güvenildi');
+  if (status === 'not-secure') return getUiText('site-security-certificate-none', 'Güvenli sertifika yok');
+  return getUiText('site-security-local-page', 'Yerel sayfa');
+}
+
+function renderSiteSecurityIcon(summary) {
+  if (!securityInfoConnIcon) return;
+  const fill = summary.isSecure ? '#10b981' : (summary.isWeb ? '#ef4444' : 'var(--text-muted)');
+  const path = summary.isSecure
+    ? 'M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z'
+    : 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z';
+  securityInfoConnIcon.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="${fill}"><path d="${path}"/></svg>`;
+}
+
+function renderSitePermissionControls(hostname, permissions = {}, isWeb = false) {
+  if (!securityInfoPermissionControls) return;
+  if (!isWeb) {
+    securityInfoPermissionControls.innerHTML = `<div class="site-security-empty">${escapeHtml(getUiText('site-security-no-site-permissions', 'Yerel sayfalar için site izni yok.'))}</div>`;
+    return;
+  }
+
+  securityInfoPermissionControls.innerHTML = SITE_SECURITY_PERMISSION_TYPES.map(permission => {
+    const label = getUiText(`permission-${permission}`, permission);
+    const value = permissions[permission] || 'default';
+    return `
+      <label class="site-security-permission-row">
+        <span>${escapeHtml(label)}</span>
+        <select data-site-permission="${escapeHtml(permission)}">
+          <option value="default" ${value === 'default' ? 'selected' : ''}>${escapeHtml(getPermissionDecisionText('default'))}</option>
+          <option value="allow" ${value === 'allow' ? 'selected' : ''}>${escapeHtml(getPermissionDecisionText('allow'))}</option>
+          <option value="block" ${value === 'block' ? 'selected' : ''}>${escapeHtml(getPermissionDecisionText('block'))}</option>
+        </select>
+      </label>
+    `;
+  }).join('');
+
+  securityInfoPermissionControls.querySelectorAll('select[data-site-permission]').forEach(select => {
+    select.addEventListener('change', async () => {
+      const permission = select.getAttribute('data-site-permission');
+      const key = `${hostname}:${permission}`;
+      if (select.value === 'default') {
+        await window.oslo.deletePermission(key);
+      } else {
+        await window.oslo.setPermission(key, select.value === 'allow');
+      }
+      if (permissionsManagerModal?.classList.contains('open')) {
+        renderPermissionsList();
+      }
+      showSecurityInfoModal();
+    });
+  });
+}
+
+async function showSecurityInfoModal() {
   if (!securityInfoModal) return;
 
   const activeTab = state.tabs[state.activeTabId];
   if (!activeTab || !activeTab.url) return;
 
-  let hostname = '';
-  let protocol = '';
-  let isWeb = false;
-
+  let summary = null;
   try {
-    const urlObj = new URL(activeTab.url);
-    protocol = urlObj.protocol;
-    hostname = urlObj.hostname;
-    isWeb = (protocol === 'https:' || protocol === 'http:') && hostname;
-  } catch (e) {
-    protocol = '';
-    hostname = '';
-    isWeb = false;
+    summary = await window.oslo.getSiteSecuritySummary(activeTab.id, activeTab.url);
+  } catch (error) {
+    console.error('Failed to load site security summary:', error);
+  }
+  if (!summary) return;
+
+  const hostname = summary.hostname || '';
+  const displayName = summary.isWeb ? hostname : getUiText('connection-local', 'Yerel Sayfa');
+  if (securityInfoDomain) securityInfoDomain.textContent = displayName;
+  if (securityInfoOrigin) securityInfoOrigin.textContent = summary.url || '';
+  if (securityInfoPermissionsSection) securityInfoPermissionsSection.style.display = summary.isWeb ? 'flex' : 'flex';
+  if (securityInfoBlockedCount) securityInfoBlockedCount.textContent = String(summary.protection?.blockedCount || 0);
+  if (securityInfoCookieCount) securityInfoCookieCount.textContent = String(summary.cookies?.total || 0);
+  const customPermissionCount = Object.values(summary.permissions || {}).filter(value => value !== 'default').length;
+  if (securityInfoPermissionCount) securityInfoPermissionCount.textContent = String(customPermissionCount);
+  if (securityInfoHttpsStatus) {
+    securityInfoHttpsStatus.textContent = summary.isSecure
+      ? getUiText('site-security-https-enabled', 'Etkin')
+      : (summary.isWeb ? getUiText('site-security-https-disabled', 'Etkin değil') : getUiText('site-security-local-page', 'Yerel sayfa'));
+    securityInfoHttpsStatus.className = summary.isSecure ? 'ok' : (summary.isWeb ? 'danger' : '');
+  }
+  if (securityInfoCertificateStatus) {
+    securityInfoCertificateStatus.textContent = getCertificateStatusText(summary.certificate?.status);
+    securityInfoCertificateStatus.className = summary.certificate?.status === 'valid' ? 'ok' : (summary.certificate?.status === 'not-secure' ? 'danger' : 'warn');
+  }
+  if (securityInfoCookieSummary) {
+    const template = getUiText('site-security-cookie-summary-template', '{total} toplam, {secure} güvenli, {session} oturum');
+    securityInfoCookieSummary.textContent = template
+      .replace('{total}', summary.cookies?.total || 0)
+      .replace('{secure}', summary.cookies?.secure || 0)
+      .replace('{session}', summary.cookies?.session || 0);
+  }
+  if (securityInfoCookiePolicy) securityInfoCookiePolicy.textContent = getCookiePolicyText(summary.protection?.cookiePolicy);
+
+  renderSiteSecurityIcon(summary);
+  if (securityInfoConnTitle) {
+    securityInfoConnTitle.textContent = summary.isSecure
+      ? getUiText('connection-secure', 'Güvenli Bağlantı (HTTPS)')
+      : (summary.isWeb ? getUiText('connection-insecure', 'Güvenli Olmayan Bağlantı (HTTP)') : getUiText('connection-local', 'Yerel Sayfa'));
+  }
+  if (securityInfoConnDesc) {
+    securityInfoConnDesc.textContent = summary.isSecure
+      ? getUiText('security-info-secure-desc', '')
+      : (summary.isWeb ? getUiText('security-info-insecure-desc', '') : getUiText('security-info-local-desc', ''));
   }
 
-  // Set Domain Header
-  if (isWeb) {
-    securityInfoDomain.textContent = hostname;
-    if (securityInfoPermissionsSection) securityInfoPermissionsSection.style.display = 'flex';
-  } else {
-    securityInfoDomain.textContent = translations[state.currentLang]['connection-local'] || 'Yerel Sayfa';
-    if (securityInfoPermissionsSection) securityInfoPermissionsSection.style.display = 'none';
-  }
-
-  // Populate connection details based on protocol
-  if (protocol === 'https:') {
-    if (securityInfoConnIcon) {
-      securityInfoConnIcon.innerHTML = `
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="#10b981">
-          <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
-        </svg>
-      `;
-    }
-    if (securityInfoConnTitle) {
-      securityInfoConnTitle.textContent = translations[state.currentLang]['connection-secure'] || 'Güvenli Bağlantı (HTTPS)';
-      securityInfoConnTitle.style.color = '#10b981';
-    }
-    if (securityInfoConnDesc) {
-      securityInfoConnDesc.textContent = translations[state.currentLang]['security-info-secure-desc'] || '';
-    }
-  } else if (protocol === 'http:') {
-    if (securityInfoConnIcon) {
-      securityInfoConnIcon.innerHTML = `
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="#ef4444">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
-        </svg>
-      `;
-    }
-    if (securityInfoConnTitle) {
-      securityInfoConnTitle.textContent = translations[state.currentLang]['connection-insecure'] || 'Güvenli Olmayan Bağlantı (HTTP)';
-      securityInfoConnTitle.style.color = '#ef4444';
-    }
-    if (securityInfoConnDesc) {
-      securityInfoConnDesc.textContent = translations[state.currentLang]['security-info-insecure-desc'] || '';
-    }
-  } else {
-    if (securityInfoConnIcon) {
-      securityInfoConnIcon.innerHTML = `
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="var(--text-muted)">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
-        </svg>
-      `;
-    }
-    if (securityInfoConnTitle) {
-      securityInfoConnTitle.textContent = translations[state.currentLang]['connection-local'] || 'Yerel Sayfa';
-      securityInfoConnTitle.style.color = 'var(--text-muted)';
-    }
-    if (securityInfoConnDesc) {
-      securityInfoConnDesc.textContent = translations[state.currentLang]['security-info-local-desc'] || '';
-    }
-  }
-
-  // Populate notification permission state
-  if (isWeb && notificationsSelect) {
-    window.oslo.getPermissions().then(perms => {
-      const decision = perms[`${hostname}:notifications`];
-      if (decision === true) {
-        notificationsSelect.value = 'allow';
-      } else if (decision === false) {
-        notificationsSelect.value = 'block';
-      } else {
-        notificationsSelect.value = 'default';
-      }
-    });
-  }
+  renderSitePermissionControls(hostname, summary.permissions || {}, summary.isWeb);
 
   openModalWithContentPreview(securityInfoModal);
 }
@@ -2820,36 +2873,6 @@ if (securityInfoModal) {
     }
   });
 }
-
-// Bind select change to save permission
-notificationsSelect?.addEventListener('change', () => {
-  const activeTab = state.tabs[state.activeTabId];
-  if (!activeTab || !activeTab.url) return;
-
-  try {
-    const urlObj = new URL(activeTab.url);
-    const hostname = urlObj.hostname;
-    const key = `${hostname}:notifications`;
-    const val = notificationsSelect.value;
-
-    if (val === 'default') {
-      window.oslo.deletePermission(key).then(() => {
-        if (permissionsManagerModal?.classList.contains('open')) {
-          renderPermissionsList();
-        }
-      });
-    } else {
-      const decision = (val === 'allow');
-      window.oslo.setPermission(key, decision).then(() => {
-        if (permissionsManagerModal?.classList.contains('open')) {
-          renderPermissionsList();
-        }
-      });
-    }
-  } catch (e) {
-    console.error('Failed to update permission from select dropdown:', e);
-  }
-});
 
 // Bind manage permissions shortcut button
 document.getElementById('btn-manage-permissions-shortcut')?.addEventListener('click', () => {
