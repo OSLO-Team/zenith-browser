@@ -40,7 +40,8 @@ const appearanceDefaults = {
   newtabShowDate: true,
   newtabShowWeather: true,
   newtabShowSearch: true,
-  newtabShowShortcuts: true
+  newtabShowShortcuts: true,
+  newtabTransparentWidgets: false
 };
 
 const appearanceSettingKeys = new Set(Object.keys(appearanceDefaults));
@@ -179,8 +180,8 @@ function isActiveNewTab() {
   const activeTab = state.tabs[state.activeTabId];
   if (!activeTab) return true;
 
-  const url = activeTab.url || '';
-  return !url || url === 'oslo://newtab' || url.includes('newtab.html');
+  const url = String(activeTab.url || '').replace(/\\/g, '/');
+  return !url || url === 'oslo://newtab' || url.includes('/newtab/newtab.html') || url.includes('/incognito-newtab/incognito-newtab.html') || url.endsWith('newtab.html') || url.endsWith('incognito-newtab.html');
 }
 
 function getNewTabSurface() {
@@ -272,7 +273,8 @@ function updateAppearanceControl(key, value) {
     newtabShowDate: ['settings-newtab-show-date', 'checked'],
     newtabShowWeather: ['settings-newtab-show-weather', 'checked'],
     newtabShowSearch: ['settings-newtab-show-search', 'checked'],
-    newtabShowShortcuts: ['settings-newtab-show-shortcuts', 'checked']
+    newtabShowShortcuts: ['settings-newtab-show-shortcuts', 'checked'],
+    newtabTransparentWidgets: ['settings-newtab-transparent-widgets', 'checked']
   };
 
   if (key === 'customCss') {
@@ -1743,6 +1745,7 @@ export function initSettings() {
   bindAppearanceCheckbox('settings-newtab-show-weather', 'newtabShowWeather');
   bindAppearanceCheckbox('settings-newtab-show-search', 'newtabShowSearch');
   bindAppearanceCheckbox('settings-newtab-show-shortcuts', 'newtabShowShortcuts');
+  bindAppearanceCheckbox('settings-newtab-transparent-widgets', 'newtabTransparentWidgets');
 
   const settingsAccentColor = document.getElementById('settings-accent-color');
   if (settingsAccentColor) {

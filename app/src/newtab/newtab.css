@@ -862,3 +862,45 @@ body.os-windows .modal-card {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
+
+/* Transparent New Tab widgets */
+body.transparent-widgets .search-input-wrapper,
+body.transparent-widgets .shortcut-card,
+body.transparent-widgets .weather-card,
+body.transparent-widgets .edit-mode-btn {
+  background-color: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+body.transparent-widgets .search-input-wrapper:focus-within {
+  background-color: transparent;
+  box-shadow: 0 0 0 1px rgba(0, 221, 255, 0.32);
+}
+
+body.transparent-widgets .shortcut-icon,
+body.transparent-widgets .add-icon {
+  background-color: transparent;
+}
+
+body.transparent-widgets .shortcut-card:hover,
+body.transparent-widgets .weather-card:hover,
+body.transparent-widgets .edit-mode-btn:hover,
+body.transparent-widgets .edit-mode-btn.active {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+body.light-mode.transparent-widgets .shortcut-card,
+body.light-mode.transparent-widgets .weather-card,
+body.light-mode.transparent-widgets .edit-mode-btn {
+  background-color: transparent;
+  box-shadow: none;
+}
+
+body.light-mode.transparent-widgets .shortcut-card:hover,
+body.light-mode.transparent-widgets .weather-card:hover,
+body.light-mode.transparent-widgets .edit-mode-btn:hover,
+body.light-mode.transparent-widgets .edit-mode-btn.active {
+  background-color: rgba(15, 23, 42, 0.05);
+}

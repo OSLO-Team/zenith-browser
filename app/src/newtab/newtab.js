@@ -142,7 +142,8 @@ document.addEventListener('DOMContentLoaded', () => {
     newtabShowDate: true,
     newtabShowWeather: true,
     newtabShowSearch: true,
-    newtabShowShortcuts: true
+    newtabShowShortcuts: true,
+    newtabTransparentWidgets: false
   };
   let activeLang = 'tr';
   let lastWeatherCode = null;
@@ -244,6 +245,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.toggle('hide-weather', activeSettings.newtabShowWeather === false);
     document.body.classList.toggle('hide-search', activeSettings.newtabShowSearch === false);
     document.body.classList.toggle('hide-shortcuts', activeSettings.newtabShowShortcuts === false);
+    document.body.classList.toggle('transparent-widgets', !!activeSettings.newtabTransparentWidgets);
     document.body.classList.toggle('reduce-motion', !!activeSettings.reduceMotion);
   }
 
@@ -1157,7 +1159,7 @@ document.addEventListener('DOMContentLoaded', () => {
     closeModal();
   });
 
-  const visualSettingKeys = new Set(['theme', 'accentColor', 'reduceMotion', 'newtabShowClock', 'newtabShowDate', 'newtabShowWeather', 'newtabShowSearch', 'newtabShowShortcuts']);
+  const visualSettingKeys = new Set(['theme', 'accentColor', 'reduceMotion', 'newtabShowClock', 'newtabShowDate', 'newtabShowWeather', 'newtabShowSearch', 'newtabShowShortcuts', 'newtabTransparentWidgets']);
   const wallpaperSettingKeys = new Set(['newtabBackgroundType', 'newtabWallpaper', 'newtabBackgroundColor', 'newtabPresetWallpaper']);
 
   // Listen to settings broadcasts from the main process

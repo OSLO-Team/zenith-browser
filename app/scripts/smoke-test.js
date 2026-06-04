@@ -47,6 +47,7 @@ function checkStartupFiles() {
   const indexHtml = read('src/renderer/index.html');
   expect('startup: renderer shell exists', exists('src/renderer/index.html'), 'renderer index is missing');
   expect('startup: newtab page exists', exists('src/newtab/newtab.html'), 'newtab html is missing');
+  expect('startup: incognito newtab page exists', exists('src/incognito-newtab/incognito-newtab.html') && exists('src/incognito-newtab/incognito-newtab.css') && exists('src/incognito-newtab/incognito-newtab.js'), 'incognito newtab files are missing');
   expect('startup: renderer module is loaded', /<script\s+type="module"\s+src="renderer\.js"/.test(indexHtml), 'renderer.js module script missing');
 }
 
@@ -133,7 +134,110 @@ function checkAutocompleteTopbarEdgeCase() {
   expect('autocomplete: overlay navigation clears address suggestions', renderer.includes('dismissAddressAutocompleteForOverlay') && renderer.includes('setAddressBarInteractionActive(false)'), 'overlay autocomplete dismissal missing');
   expect('autocomplete: autohide top bar stays visible while active', style.includes('body.topbar-auto-hide.address-bar-active #top-bar') && style.includes('body.topbar-auto-hide.autocomplete-active #top-bar'), 'top bar autohide active override missing');
   expect('autocomplete: suggestions are promoted above hidden chrome', style.includes('body.autocomplete-active .autocomplete-dropdown') && style.includes('.autocomplete-dropdown.is-visible'), 'autocomplete z-index visibility override missing');
-  expect('autocomplete: settings overlays stay above active address chrome', style.includes('z-index: 16000') && style.includes('z-index: 14000'), 'settings overlay z-index guard missing');
+  expect('autocomplete: settings overlays stay above active address chrome', style.includes('--z-settings-overlay: 16000') && style.includes('z-index: 14000'), 'settings overlay z-index guard missing');
+}
+
+function checkModalLayeringFlow() {
+  const style = read('src/renderer/style.css');
+  const renderer = read('src/renderer/renderer.js');
+  const settingsZ = Number(style.match(/--z-settings-overlay:\s*(\d+)/)?.[1] || 0);
+  const modalZ = Number(style.match(/--z-modal-overlay:\s*(\d+)/)?.[1] || 0);
+  const toastZ = Number(style.match(/--z-toast-overlay:\s*(\d+)/)?.[1] || 0);
+
+  expect('modals: modal layer is above settings overlay',
+    settingsZ > 0 && modalZ > settingsZ && (!toastZ || toastZ > modalZ),
+    `settings=${settingsZ}, modal=${modalZ}, toast=${toastZ}`);
+  expect('modals: update notes can open without closing settings',
+    renderer.includes('showUpdateModal(info, { notesOnly: true })') &&
+      renderer.includes('updateModal?.classList.add') &&
+      style.includes('z-index: var(--z-modal-overlay)'),
+    'update notes modal can still render behind settings');
+  expect('modals: custom success modal shares modal layer',
+    style.includes('.bookmarks-success-modal-overlay') && style.includes('z-index: var(--z-modal-overlay)'),
+    'custom bookmark success modal is not on modal layer');
+  expect('modals: release notes scrollbar is themed',
+    style.includes('.update-notes-container::-webkit-scrollbar-thumb') &&
+      style.includes('.update-notes-container::-webkit-scrollbar-button') &&
+      style.includes('scrollbar-color: rgba(0, 221, 255'),
+    'release notes scrollbar still uses the default platform style');
+}
+
+function checkTransparentNewtabWidgets() {
+  const main = read('src/main/main.js');
+  const preload = read('src/preload.js');
+  const indexHtml = read('src/renderer/index.html');
+  const settings = read('src/renderer/js/settings.js');
+  const newtab = read('src/newtab/newtab.js');
+  const newtabCss = read('src/newtab/newtab.css');
+  const i18n = read('src/renderer/js/i18n.js');
+  expect('newtab widgets: default setting exists', main.includes('newtabTransparentWidgets: false'), 'transparent widget default missing');
+  expect('newtab widgets: preload allows setting', preload.includes("'newtabTransparentWidgets'"), 'transparent widget setting not allowed through preload');
+  expect('newtab widgets: appearance toggle exists', indexHtml.includes('settings-newtab-transparent-widgets') && indexHtml.includes('newtab-transparent-widgets'), 'transparent widget toggle missing');
+  expect('newtab widgets: settings renderer binds toggle', settings.includes('newtabTransparentWidgets: false') && settings.includes("bindAppearanceCheckbox('settings-newtab-transparent-widgets', 'newtabTransparentWidgets')"), 'transparent widget settings binding missing');
+  expect('newtab widgets: newtab applies transparent class', newtab.includes('newtabTransparentWidgets: false') && newtab.includes('transparent-widgets') && newtab.includes("'newtabTransparentWidgets'"), 'newtab transparent widget runtime missing');
+  expect('newtab widgets: transparent styles cover widgets', newtabCss.includes('body.transparent-widgets') && newtabCss.includes('.search-input-wrapper') && newtabCss.includes('.weather-card') && newtabCss.includes('.shortcut-card'), 'transparent widget CSS missing');
+  expect('newtab widgets: translations exist', i18n.includes("'newtab-transparent-widgets'"), 'transparent widget translations missing');
+}
+
+function checkIncognitoNewTabFlow() {
+  const main = read('src/main/main.js');
+  const preload = read('src/preload.js');
+  const renderer = read('src/renderer/renderer.js');
+  const settings = read('src/renderer/js/settings.js');
+  const tabs = read('src/renderer/js/tabs.js');
+  const html = read('src/incognito-newtab/incognito-newtab.html');
+  const css = read('src/incognito-newtab/incognito-newtab.css');
+  const js = read('src/incognito-newtab/incognito-newtab.js');
+  expect('incognito newtab: main routes blank incognito tabs to private page', main.includes('INCOGNITO_NEWTAB_PAGE_PATH') && main.includes('getNewTabPagePath(!!tab?.isIncognito)') && main.includes('/incognito-newtab/incognito-newtab.html'), 'main incognito newtab route missing');
+  expect('incognito newtab: local newtab detection includes private page', main.includes('isLocalNewTabUrl') && renderer.includes('isLocalNewTabUrl') && settings.includes('/incognito-newtab/incognito-newtab.html') && tabs.includes('/incognito-newtab/incognito-newtab.html'), 'incognito newtab local-page detection missing');
+  expect('incognito newtab: preload exposes newtab APIs to private page', preload.includes('/incognito-newtab/incognito-newtab.html') && preload.includes("return 'newtab'"), 'incognito newtab preload page kind missing');
+  expect('incognito newtab: session restore skips private tabs', main.includes('Object.values(tabs).filter(tab => !tab.isIncognito).map'), 'incognito tabs are not excluded from session restore');
+  expect('incognito newtab: content explains privacy boundaries', html.includes('notSavedTitle') && html.includes('visibleTitle') && html.includes('tipsTitle'), 'incognito privacy content missing');
+  expect('incognito newtab: dark private theme exists', css.includes('--page-bg') && css.includes('.privacy-badge') && css.includes('.info-card'), 'incognito newtab theme missing');
+  expect('incognito newtab: tr/en/fr translations exist', js.includes('tr:') && js.includes('en:') && js.includes('fr:'), 'incognito newtab translations missing');
+  expect('incognito newtab: search box is functional', html.includes('incognito-search-form') && css.includes('.incognito-search') && js.includes('formatSearch') && js.includes('activeSearchEngine'), 'incognito newtab search box missing');
+  expect('incognito newtab: topbar icons do not print raw SVG text', js.includes('topbarIconFor') && js.includes('${topbarIconFor(item.type)}') && !js.includes('item.icon || iconFor'), 'incognito autocomplete icon rendering can leak raw SVG text');
+  expect('incognito newtab: topbar autocomplete is supported', js.includes('onTopbarAutocompleteShow') && js.includes('activateTopbarAutocomplete') && css.includes('.incognito-topbar-autocomplete'), 'incognito topbar autocomplete missing');
+}
+
+function checkVideoFullscreenFlow() {
+  const main = read('src/main/main.js');
+  expect('fullscreen: html fullscreen state is tracked per window', main.includes('htmlFullscreenByWindow') && main.includes('enterHtmlFullscreenForView') && main.includes('leaveHtmlFullscreenForWindow'), 'html fullscreen state helpers missing');
+  expect('fullscreen: webcontents html fullscreen events are handled', main.includes("wc.on('enter-html-full-screen'") && main.includes("wc.on('leave-html-full-screen'"), 'html fullscreen webContents events missing');
+  expect('fullscreen: fullscreen view expands to window content bounds', main.includes('getFullscreenContentBounds') && main.includes('win.setFullScreen(true)') && main.includes('fullscreenState.view.setBounds'), 'fullscreen bounds expansion missing');
+  expect('fullscreen: renderer bounds cannot shrink active fullscreen view', main.includes("ipcMain.on('tab-bounds'") && main.includes('applyHtmlFullscreenBounds(win, fullscreenState)') && main.includes('return;'), 'fullscreen tab-bounds guard missing');
+  expect('fullscreen: fullscreen permission is allowed', main.includes("permission === 'fullscreen'") && main.includes('callback(true)'), 'fullscreen permission allow missing');
+}
+
+function checkUpdateConnectivityFlow() {
+  const main = read('src/main/main.js');
+  const preload = read('src/preload.js');
+  const renderer = read('src/renderer/renderer.js');
+  const i18n = read('src/renderer/js/i18n.js');
+  const handlerStart = main.indexOf("ipcMain.handle('check-for-updates'");
+  const updateHandler = handlerStart >= 0 ? main.slice(handlerStart) : '';
+
+  expect('updates: connectivity is checked before release lookup',
+    updateHandler.includes('hasUpdateNetworkConnectivity') &&
+      updateHandler.includes('fetchLatestGithubRelease') &&
+      updateHandler.indexOf('hasUpdateNetworkConnectivity') < updateHandler.indexOf('fetchLatestGithubRelease') &&
+      main.includes('releases/latest'),
+    'update checker can still report current version after a network failure');
+  expect('updates: offline result uses explicit error code',
+    main.includes("errorCode: 'network_offline'") && main.includes('offline: true') && main.includes("latestVersion: ''"),
+    'offline update result is not distinguishable from up-to-date state');
+  expect('updates: renderer shows network-specific message',
+    renderer.includes('getUpdateCheckErrorText') && renderer.includes('hasUpdateCheckError') && renderer.includes('update-network-error'),
+    'update UI does not handle offline update checks explicitly');
+  expect('updates: network error translations exist',
+    i18n.includes("'update-network-error'"),
+    'network update error translation missing');
+  expect('updates: release notes have a dedicated IPC flow',
+    main.includes("ipcMain.handle('release-notes-get'") &&
+      preload.includes('getReleaseNotes') &&
+      renderer.includes('window.oslo.getReleaseNotes') &&
+      renderer.includes('showUpdateModal(info, { notesOnly: true })'),
+    'release notes button still depends only on the update availability flow');
 }
 
 function checkBuildConfig() {
@@ -174,6 +278,11 @@ function run() {
   checkSiteSecurityPanel();
   checkPasswordHealthPanel();
   checkAutocompleteTopbarEdgeCase();
+  checkModalLayeringFlow();
+  checkTransparentNewtabWidgets();
+  checkIncognitoNewTabFlow();
+  checkVideoFullscreenFlow();
+  checkUpdateConnectivityFlow();
   checkBuildConfig();
   checkI18n();
   checkNativeAlerts();

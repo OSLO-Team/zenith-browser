@@ -293,7 +293,8 @@ export function updateBookmarkIcon() {
   const addBookmarkBtn = document.getElementById('add-bookmark-btn');
   if (!addBookmarkBtn) return;
   const activeTab = state.tabs[state.activeTabId];
-  if (!activeTab || activeTab.url.includes('newtab.html') || activeTab.url.includes('/reader/reader.html')) {
+  const activeUrl = String(activeTab?.url || '').replace(/\\/g, '/');
+  if (!activeTab || activeUrl.includes('/newtab/newtab.html') || activeUrl.includes('/incognito-newtab/incognito-newtab.html') || activeUrl.includes('/reader/reader.html')) {
     addBookmarkBtn.style.visibility = 'hidden';
     return;
   }

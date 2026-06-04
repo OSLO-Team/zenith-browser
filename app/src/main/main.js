@@ -11,6 +11,8 @@ const GITHUB_REPO = 'OSLO-Team/oslo-browser'; // Format: 'owner/repo'
 const EXPECTED_UPDATE_PUBLISHERS = ['OSLO Browser', 'oslobrowser.com', 'Emir Can Turan'];
 const REQUIRE_SIGNED_UPDATES = process.env.OSLO_REQUIRE_SIGNED_UPDATES === '1';
 const UPDATE_STATE_FILE = 'pending-update.json';
+const NEWTAB_PAGE_PATH = path.join(__dirname, '../newtab/newtab.html');
+const INCOGNITO_NEWTAB_PAGE_PATH = path.join(__dirname, '../incognito-newtab/incognito-newtab.html');
 const READER_PAGE_PATH = path.join(__dirname, '../reader/reader.html');
 const READER_PAGE_URL_PREFIX = pathToFileURL(READER_PAGE_PATH).toString().toLowerCase();
 const READER_ARTICLE_TTL_MS = 2 * 60 * 60 * 1000;
@@ -51,6 +53,7 @@ const DEFAULT_SETTINGS = {
   newtabShowWeather: true,
   newtabShowSearch: true,
   newtabShowShortcuts: true,
+  newtabTransparentWidgets: false,
   homeButtonEnabled: false,
   homePageUrl: '',
   bookmarksBarEnabled: false,
@@ -435,6 +438,7 @@ let tabs = {}; // tabId -> { id, view, url, title, isLoading, isIncognito, space
 let activeTabs = {}; // windowId -> activeTabId
 let windowBounds = {}; // windowId -> bounds
 let tabOrders = {}; // windowId -> [tabId, tabId, ...]
+let htmlFullscreenByWindow = new Map(); // windowId -> { tabId, view, isSplitSide, wasFullScreen, siblingView }
 let incognitoSession = null;
 const readerArticles = new Map();
 const spaceSessions = new Map();
@@ -496,6 +500,11 @@ function cleanSessionUserAgent(sessionInstance) {
 
 function setupProfilePermissionHandler(sessionInstance) {
   sessionInstance.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    if (permission === 'fullscreen') {
+      callback(true);
+      return;
+    }
+
     const requestingUrl = details.requestingUrl || webContents.getURL();
     let domain = '';
     try {
@@ -843,6 +852,7 @@ function createMainWindow() {
 
   win.on('closed', () => {
     windows.delete(win);
+    htmlFullscreenByWindow.delete(win.id);
     // Destroy all tabs belonging to this window
     Object.keys(tabs).forEach(id => {
       if (tabs[id] && tabs[id].windowId === win.id) {
@@ -851,6 +861,17 @@ function createMainWindow() {
     });
     delete activeTabs[win.id];
     delete windowBounds[win.id];
+  });
+
+  win.on('resize', () => {
+    const fullscreenState = htmlFullscreenByWindow.get(win.id);
+    if (fullscreenState) {
+      applyHtmlFullscreenBounds(win, fullscreenState);
+    }
+  });
+
+  win.on('leave-full-screen', () => {
+    leaveHtmlFullscreenForWindow(win, { restoreWindowFullscreen: false });
   });
 
   return win;
@@ -916,11 +937,91 @@ function applyBoundsToManagedView(win, tab, view, isSplitSide) {
   view.setBounds(bounds);
 }
 
+function getFullscreenContentBounds(win) {
+  const bounds = win?.getContentBounds?.();
+  if (!bounds) return { x: 0, y: 0, width: 0, height: 0 };
+  return {
+    x: 0,
+    y: 0,
+    width: Math.max(0, Math.round(bounds.width || 0)),
+    height: Math.max(0, Math.round(bounds.height || 0))
+  };
+}
+
+function applyHtmlFullscreenBounds(win, fullscreenState) {
+  if (!win || !fullscreenState?.view || fullscreenState.view.webContents?.isDestroyed?.()) return;
+  fullscreenState.view.setBounds(getFullscreenContentBounds(win));
+}
+
+function enterHtmlFullscreenForView(tab, view, isSplitSide) {
+  const win = BrowserWindow.fromId(tab.windowId);
+  if (!win || !view || view.webContents?.isDestroyed?.()) return;
+
+  const previous = htmlFullscreenByWindow.get(win.id);
+  if (previous && previous.view !== view) {
+    leaveHtmlFullscreenForWindow(win, { restoreWindowFullscreen: false });
+  }
+
+  const siblingView = isSplitSide ? tab.view : tab.splitView;
+  htmlFullscreenByWindow.set(win.id, {
+    tabId: tab.id,
+    view,
+    isSplitSide,
+    wasFullScreen: win.isFullScreen(),
+    siblingView: siblingView || null
+  });
+
+  if (siblingView && win.contentView.children.includes(siblingView)) {
+    win.contentView.removeChildView(siblingView);
+  }
+  if (!win.contentView.children.includes(view)) {
+    win.contentView.addChildView(view);
+  }
+
+  applyHtmlFullscreenBounds(win, htmlFullscreenByWindow.get(win.id));
+
+  if (!win.isFullScreen()) {
+    win.setFullScreen(true);
+  }
+}
+
+function leaveHtmlFullscreenForWindow(win, options = {}) {
+  if (!win) return;
+  const fullscreenState = htmlFullscreenByWindow.get(win.id);
+  if (!fullscreenState) return;
+
+  htmlFullscreenByWindow.delete(win.id);
+
+  const tab = tabs[fullscreenState.tabId];
+  if (tab && activeTabs[win.id] === tab.id) {
+    if (tab.view && !win.contentView.children.includes(tab.view)) {
+      win.contentView.addChildView(tab.view);
+    }
+    if (tab.splitView && !win.contentView.children.includes(tab.splitView)) {
+      win.contentView.addChildView(tab.splitView);
+    }
+    applyBoundsToManagedView(win, tab, tab.view, false);
+    if (tab.splitView) {
+      applyBoundsToManagedView(win, tab, tab.splitView, true);
+    }
+  }
+
+  const shouldRestoreWindowFullscreen = options.restoreWindowFullscreen !== false;
+  if (shouldRestoreWindowFullscreen && !fullscreenState.wasFullScreen && win.isFullScreen()) {
+    win.setFullScreen(false);
+  }
+}
+
 function replaceViewForNavigation(tab, view, isSplitSide, targetUrl, cleanGoogleAuth) {
   if (!tab || !view || !targetUrl) return false;
 
   const previousView = isSplitSide ? tab.splitView : tab.view;
   if (previousView !== view) return false;
+
+  const win = BrowserWindow.fromId(tab.windowId);
+  if (win && htmlFullscreenByWindow.get(win.id)?.view === previousView) {
+    leaveHtmlFullscreenForWindow(win);
+  }
 
   const viewSession = previousView.webContents?.session || getSessionForSpace(tab.space, tab.isIncognito);
   const nextView = createManagedView(viewSession, { cleanGoogleAuth });
@@ -941,7 +1042,6 @@ function replaceViewForNavigation(tab, view, isSplitSide, targetUrl, cleanGoogle
 
   setupViewListeners(tab, nextView, isSplitSide);
 
-  const win = BrowserWindow.fromId(tab.windowId);
   if (win && previousView && win.contentView.children.includes(previousView)) {
     win.contentView.removeChildView(previousView);
   }
@@ -1069,7 +1169,7 @@ function setupViewListeners(tab, view, isSplitSide) {
     }
 
     // Add to history if not incognito
-    if (!tab.isIncognito && !newUrl.includes('newtab.html') && !newUrl.startsWith('file://')) {
+    if (!tab.isIncognito && !isLocalNewTabUrl(newUrl) && !newUrl.startsWith('file://')) {
       const historyEntry = {
         title: tab.title || newUrl,
         url: newUrl,
@@ -1134,6 +1234,15 @@ function setupViewListeners(tab, view, isSplitSide) {
       tab.isPlayingAudio = false;
       sendToUI(getWin(), 'ui-tab-updated', { id: tabId, isPlayingAudio: false });
     }
+  });
+
+  wc.on('enter-html-full-screen', () => {
+    enterHtmlFullscreenForView(tab, view, isSplitSide);
+  });
+
+  wc.on('leave-html-full-screen', () => {
+    const win = getWin();
+    if (win) leaveHtmlFullscreenForWindow(win);
   });
 
   wc.setWindowOpenHandler((details) => {
@@ -1374,13 +1483,13 @@ function createTab(url, isIncognito = false, space = 'Genel', winId = null, tabI
   const initialZoom = typeof zoomFactor === 'number' ? zoomFactor : defaultZoom;
 
   const viewSession = getSessionForSpace(space, isIncognito);
-  const formattedInitialUrl = url ? formatUrl(url) : '';
+  const formattedInitialUrl = url && url !== 'oslo://newtab' ? formatUrl(url) : '';
   const usesCleanGoogleAuthView = shouldUseCleanGoogleAuthView(formattedInitialUrl);
 
   const view = createManagedView(viewSession, { cleanGoogleAuth: usesCleanGoogleAuthView });
 
   const lang = settingsStore.get('language') || 'tr';
-  const defaultTitle = lang === 'tr' ? 'Yeni Sekme' : (lang === 'fr' ? 'Nouvel Onglet' : 'New Tab');
+  const defaultTitle = getDefaultTabTitle(lang, isIncognito);
 
   const tab = {
     id: finalTabId,
@@ -1422,11 +1531,11 @@ function createTab(url, isIncognito = false, space = 'Genel', winId = null, tabI
 
   setupTabListeners(tab);
 
-  // Load the initial URL or local newtab.html
+  // Load the initial URL or the matching local New Tab page.
   if (formattedInitialUrl) {
     view.webContents.loadURL(formattedInitialUrl);
   } else {
-    view.webContents.loadFile(path.join(__dirname, '../newtab/newtab.html'));
+    loadLocalNewTabForTab(tab, view);
   }
 
   return tab;
@@ -1466,6 +1575,10 @@ function destroyTab(tabId) {
   delete tabs[tabId];
 
   const win = BrowserWindow.fromId(tab.windowId);
+  if (win && htmlFullscreenByWindow.get(win.id)?.tabId === tabId) {
+    leaveHtmlFullscreenForWindow(win);
+  }
+
   if (tab.view) {
     try {
       if (win && win.contentView.children.includes(tab.view)) {
@@ -1555,6 +1668,10 @@ async function sleepTab(tabId) {
   tab.scrollY = 0;
 
   const win = BrowserWindow.fromId(tab.windowId);
+  if (win && htmlFullscreenByWindow.get(win.id)?.tabId === tabId) {
+    leaveHtmlFullscreenForWindow(win);
+  }
+
   if (tab.view) {
     try {
       const scroll = await tab.view.webContents.executeJavaScript('({ x: window.scrollX, y: window.scrollY })');
@@ -1590,7 +1707,7 @@ function wakeTab(tabId) {
   if (!tab || !tab.isSleeping) return;
 
   const viewSession = getSessionForSpace(tab.space, tab.isIncognito);
-  const formattedUrl = tab.url ? formatUrl(tab.url) : '';
+  const formattedUrl = tab.url && tab.url !== 'oslo://newtab' && !isLocalNewTabUrl(tab.url) ? formatUrl(tab.url) : '';
   const usesCleanGoogleAuthView = shouldUseCleanGoogleAuthView(formattedUrl);
 
   const view = createManagedView(viewSession, { cleanGoogleAuth: usesCleanGoogleAuthView });
@@ -1606,7 +1723,7 @@ function wakeTab(tabId) {
   if (formattedUrl) {
     view.webContents.loadURL(formattedUrl);
   } else {
-    view.webContents.loadFile(path.join(__dirname, '../newtab/newtab.html'));
+    loadLocalNewTabForTab(tab, view);
   }
 
   const win = BrowserWindow.fromId(tab.windowId);
@@ -1633,6 +1750,11 @@ function selectTab(tabId) {
 
   const win = BrowserWindow.fromId(tab.windowId) || [...windows][0];
   if (!win) return;
+
+  const fullscreenState = htmlFullscreenByWindow.get(win.id);
+  if (fullscreenState && fullscreenState.tabId !== tabId) {
+    leaveHtmlFullscreenForWindow(win);
+  }
 
   // Wake up if sleeping
   if (tab.isSleeping) {
@@ -1710,6 +1832,7 @@ function selectTab(tabId) {
 
 function formatUrl(val) {
   let url = val.trim();
+  if (url === 'oslo://newtab') return url;
   if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('file://')) {
     return url;
   }
@@ -1734,6 +1857,35 @@ function formatUrl(val) {
   };
   const searchUrl = searchEngines[engine] || searchEngines.duckduckgo;
   return searchUrl + encodeURIComponent(url);
+}
+
+function getDefaultTabTitle(lang = 'tr', isIncognito = false) {
+  if (isIncognito) {
+    if (lang === 'en') return 'Incognito Tab';
+    if (lang === 'fr') return 'Onglet Privé';
+    return 'Gizli Sekme';
+  }
+  if (lang === 'en') return 'New Tab';
+  if (lang === 'fr') return 'Nouvel Onglet';
+  return 'Yeni Sekme';
+}
+
+function getNewTabPagePath(isIncognito = false) {
+  return isIncognito ? INCOGNITO_NEWTAB_PAGE_PATH : NEWTAB_PAGE_PATH;
+}
+
+function loadLocalNewTabForTab(tab, targetView = null) {
+  const view = targetView || tab?.view;
+  if (!view?.webContents || view.webContents.isDestroyed()) return null;
+  return view.webContents.loadFile(getNewTabPagePath(!!tab?.isIncognito));
+}
+
+function isLocalNewTabUrl(url) {
+  const value = String(url || '').replace(/\\/g, '/').toLowerCase();
+  return value.startsWith('file:') && (
+    value.endsWith('/newtab/newtab.html') ||
+    value.endsWith('/incognito-newtab/incognito-newtab.html')
+  );
 }
 
 function isReaderPageUrl(url) {
@@ -2147,7 +2299,7 @@ function isLocalNewTabSender(event) {
   if (!isKnownTabSender(event)) return false;
   try {
     const url = event.sender.getURL().replace(/\\/g, '/').toLowerCase();
-    return url.startsWith('file:') && url.endsWith('/newtab/newtab.html');
+    return isLocalNewTabUrl(url);
   } catch (error) {
     return false;
   }
@@ -2187,7 +2339,7 @@ function saveSession() {
     sessionStore.set('tabOrders', {});
     return;
   }
-  const sessionTabs = Object.values(tabs).map(tab => {
+  const sessionTabs = Object.values(tabs).filter(tab => !tab.isIncognito).map(tab => {
     let url = tab.url;
     if (tab.view && !tab.isSleeping && tab.view.webContents) {
       try {
@@ -2579,7 +2731,7 @@ ipcMain.on('tab-navigate', (event, { tabId, url }) => {
       tab.url = targetUrl;
     }
     if (targetUrl === 'oslo://newtab' || targetUrl === '') {
-      targetView.webContents.loadFile(path.join(__dirname, '../newtab/newtab.html'));
+      loadLocalNewTabForTab(tab, targetView);
     } else {
       const formattedTarget = formatUrl(targetUrl);
       const needsCleanGoogleAuth = shouldUseCleanGoogleAuthView(formattedTarget);
@@ -2646,7 +2798,7 @@ ipcMain.on('tab-update-space', (event, { tabId, space }) => {
       oldView.__osloAllowClose = true;
       oldView.webContents.close();
 
-      const formattedCurrentUrl = currentUrl && !currentUrl.includes('newtab.html') ? formatUrl(currentUrl) : '';
+      const formattedCurrentUrl = currentUrl && !isLocalNewTabUrl(currentUrl) ? formatUrl(currentUrl) : '';
       const usesCleanGoogleAuthView = shouldUseCleanGoogleAuthView(formattedCurrentUrl);
       const view = createManagedView(getSessionForSpace(space, false), { cleanGoogleAuth: usesCleanGoogleAuthView });
 
@@ -2658,7 +2810,7 @@ ipcMain.on('tab-update-space', (event, { tabId, space }) => {
       if (formattedCurrentUrl) {
         view.webContents.loadURL(formattedCurrentUrl);
       } else {
-        view.webContents.loadFile(path.join(__dirname, '../newtab/newtab.html'));
+        loadLocalNewTabForTab(tab, view);
       }
 
       if (win && activeTabs[win.id] === tabId && windowBounds[win.id] && windowBounds[win.id].width > 0) {
@@ -2702,6 +2854,12 @@ ipcMain.on('tab-bounds', (event, bounds) => {
 
   const activeId = activeTabs[win.id];
   if (activeId && tabs[activeId]) {
+    const fullscreenState = htmlFullscreenByWindow.get(win.id);
+    if (fullscreenState) {
+      applyHtmlFullscreenBounds(win, fullscreenState);
+      return;
+    }
+
     const tab = tabs[activeId];
     if (windowBounds[win.id].width === 0 && windowBounds[win.id].height === 0) {
       if (tab.view && win.contentView.children.includes(tab.view)) {
@@ -2750,7 +2908,7 @@ ipcMain.on('tab-toggle-split', (event, tabId) => {
 
   if (tab.splitView) {
     const splitUrl = tab.splitUrl;
-    const isRealUrl = splitUrl && !splitUrl.includes('newtab.html') && splitUrl !== 'oslo://newtab';
+    const isRealUrl = splitUrl && !isLocalNewTabUrl(splitUrl) && splitUrl !== 'oslo://newtab';
 
     // Turn split screen OFF
     if (win && win.contentView.children.includes(tab.splitView)) {
@@ -2816,7 +2974,7 @@ ipcMain.on('tab-toggle-split', (event, tabId) => {
 
     setupViewListeners(tab, splitView, true);
 
-    splitView.webContents.loadFile(path.join(__dirname, '../newtab/newtab.html'));
+    loadLocalNewTabForTab(tab, splitView);
 
     const defaultZoom = parseFloat(settingsStore.get('defaultPageZoom')) || 1.0;
     splitView.webContents.setZoomFactor(tab.zoomFactor || defaultZoom);
@@ -2971,7 +3129,7 @@ function getNewtabForUiEvent(event, tabId, { requireActive = true } = {}) {
 
   try {
     const url = tab.view.webContents.getURL().replace(/\\/g, '/').toLowerCase();
-    if (!url.startsWith('file:') || !url.endsWith('/newtab/newtab.html')) return null;
+    if (!isLocalNewTabUrl(url)) return null;
   } catch (error) {
     return null;
   }
@@ -3465,21 +3623,88 @@ function reconcilePendingUpdateState() {
   }
 }
 
+const UPDATE_CHECK_HEADERS = {
+  'User-Agent': 'oslo-browser-updater'
+};
+
+function createUpdateNetworkErrorResult(currentVersion, error) {
+  return {
+    updateAvailable: false,
+    currentVersion,
+    latestVersion: '',
+    releaseNotes: '',
+    downloadUrl: '',
+    error: error?.message || 'Network connection could not be established.',
+    errorCode: 'network_offline',
+    offline: true
+  };
+}
+
+function isLikelyUpdateNetworkError(error) {
+  const value = `${error?.name || ''} ${error?.code || ''} ${error?.message || ''}`.toLowerCase();
+  return [
+    'aborterror',
+    'err_internet_disconnected',
+    'err_name_not_resolved',
+    'err_network_changed',
+    'err_timed_out',
+    'err_connection_timed_out',
+    'err_connection_refused',
+    'err_connection_reset',
+    'err_address_unreachable',
+    'failed to fetch',
+    'network',
+    'internet',
+    'dns'
+  ].some(token => value.includes(token));
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 6000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await net.fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function hasUpdateNetworkConnectivity() {
+  try {
+    const response = await fetchWithTimeout('https://api.github.com/rate_limit', {
+      headers: UPDATE_CHECK_HEADERS
+    }, 5000);
+    return Number.isInteger(response.status) && response.status > 0;
+  } catch (error) {
+    return false;
+  }
+}
+
+async function fetchLatestGithubRelease() {
+  const response = await fetchWithTimeout(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+    headers: UPDATE_CHECK_HEADERS
+  });
+
+  if (!response.ok) {
+    throw new Error(`GitHub API returned status ${response.status}`);
+  }
+
+  return response.json();
+}
+
 ipcMain.handle('check-for-updates', async (event) => {
   assertMainUiSender(event);
   const currentVersion = app.getVersion();
   try {
-    const response = await net.fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
-      headers: {
-        'User-Agent': 'oslo-browser-updater'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`GitHub API returned status ${response.status}`);
+    const hasNetwork = await hasUpdateNetworkConnectivity();
+    if (!hasNetwork) {
+      return createUpdateNetworkErrorResult(currentVersion);
     }
 
-    const release = await response.json();
+    const release = await fetchLatestGithubRelease();
     const latestVersion = normalizeVersion(release.tag_name);
 
     let downloadUrl = 'https://oslobrowser.com/download';
@@ -3514,13 +3739,60 @@ ipcMain.handle('check-for-updates', async (event) => {
     };
   } catch (error) {
     console.error('Failed to check for updates from GitHub:', error);
+    if (isLikelyUpdateNetworkError(error)) {
+      return createUpdateNetworkErrorResult(currentVersion, error);
+    }
+
     return {
       updateAvailable: false,
       currentVersion,
-      latestVersion: currentVersion,
+      latestVersion: '',
       releaseNotes: '',
       downloadUrl: '',
-      error: error.message
+      error: error.message,
+      errorCode: 'update_check_failed'
+    };
+  }
+});
+
+ipcMain.handle('release-notes-get', async (event) => {
+  assertMainUiSender(event);
+  const currentVersion = app.getVersion();
+  try {
+    const hasNetwork = await hasUpdateNetworkConnectivity();
+    if (!hasNetwork) {
+      return createUpdateNetworkErrorResult(currentVersion);
+    }
+
+    const release = await fetchLatestGithubRelease();
+    const latestVersion = normalizeVersion(release.tag_name);
+
+    return {
+      updateAvailable: isNewerVersion(currentVersion, latestVersion),
+      currentVersion,
+      latestVersion,
+      releaseName: release.name || release.tag_name || '',
+      releaseNotes: release.body || '',
+      releaseUrl: release.html_url || '',
+      publishedAt: release.published_at || '',
+      downloadUrl: release.html_url || `https://github.com/${GITHUB_REPO}/releases/latest`
+    };
+  } catch (error) {
+    console.error('Failed to load release notes from GitHub:', error);
+    if (isLikelyUpdateNetworkError(error)) {
+      return createUpdateNetworkErrorResult(currentVersion, error);
+    }
+
+    return {
+      updateAvailable: false,
+      currentVersion,
+      latestVersion: '',
+      releaseName: '',
+      releaseNotes: '',
+      releaseUrl: '',
+      downloadUrl: '',
+      error: error.message,
+      errorCode: 'release_notes_failed'
     };
   }
 });

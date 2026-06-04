@@ -19,6 +19,9 @@
   --topbar-height: 52px;
   --shadow-premium: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
   --font-family: 'Outfit', sans-serif;
+  --z-settings-overlay: 16000;
+  --z-modal-overlay: 24000;
+  --z-toast-overlay: 99999;
 }
 
 * {
@@ -1001,7 +1004,7 @@ body.topbar-auto-hide:has(.bookmarks-bar:focus-within) #top-bar::before {
   right: 0;
   bottom: 0;
   background-color: var(--bg-primary);
-  z-index: 16000;
+  z-index: var(--z-settings-overlay);
   display: none;
 }
 
@@ -1925,7 +1928,7 @@ body.light-mode .space-btn.active {
   display: none;
   align-items: center;
   justify-content: center;
-  z-index: 10000;
+  z-index: var(--z-modal-overlay);
   opacity: 0;
   transition: opacity 0.25s ease-in-out;
 }
@@ -3420,7 +3423,7 @@ body.light-mode #sidebar.collapsed .tab-item.muted .tab-audio-btn:hover {
   position: fixed;
   bottom: 20px;
   right: 20px;
-  z-index: 99999;
+  z-index: var(--z-toast-overlay);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -5307,6 +5310,38 @@ body.light-mode #sidebar.collapsed .tab-item.muted .tab-audio-btn:hover {
   color: var(--text-main);
   max-height: 160px;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 221, 255, 0.55) rgba(255, 255, 255, 0.04);
+}
+
+.update-notes-container::-webkit-scrollbar {
+  width: 10px;
+}
+
+.update-notes-container::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.035);
+  border-radius: 999px;
+  margin: 8px 0;
+}
+
+.update-notes-container::-webkit-scrollbar-thumb {
+  min-height: 42px;
+  border: 2px solid rgba(12, 13, 16, 0.92);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(0, 221, 255, 0.9), rgba(0, 102, 255, 0.72));
+  box-shadow: 0 0 12px rgba(0, 221, 255, 0.18);
+}
+
+.update-notes-container::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(45, 236, 255, 1), rgba(40, 130, 255, 0.92));
+}
+
+.update-notes-container::-webkit-scrollbar-button,
+.update-notes-container::-webkit-scrollbar-corner {
+  width: 0;
+  height: 0;
+  display: none;
+  background: transparent;
 }
 
 /* Custom styles for parsed release notes */
@@ -5498,7 +5533,7 @@ body.light-mode #content-area {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9999;
+  z-index: var(--z-modal-overlay);
   opacity: 0;
   transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   pointer-events: none;

@@ -1031,6 +1031,7 @@ function getLocalPageKind() {
     const pathname = decodeURIComponent(window.location.pathname).replace(/\\/g, '/').toLowerCase();
     if (pathname.endsWith('/renderer/index.html')) return 'app';
     if (pathname.endsWith('/newtab/newtab.html')) return 'newtab';
+    if (pathname.endsWith('/incognito-newtab/incognito-newtab.html')) return 'newtab';
     if (pathname.endsWith('/reader/reader.html')) return 'reader';
   } catch (error) { }
   return 'web';
@@ -1045,7 +1046,7 @@ const allowedSettings = new Set([
   'topBarAutoHide', 'uiFontSize', 'defaultPageZoom', 'reduceMotion', 'transparencyEnabled',
   'language', 'newtabBackgroundType', 'newtabWallpaper', 'newtabBackgroundColor',
   'newtabPresetWallpaper', 'newtabShowClock', 'newtabShowDate', 'newtabShowWeather',
-  'newtabShowSearch', 'newtabShowShortcuts', 'homeButtonEnabled', 'homePageUrl',
+  'newtabShowSearch', 'newtabShowShortcuts', 'newtabTransparentWidgets', 'homeButtonEnabled', 'homePageUrl',
   'bookmarksBarEnabled', 'historyLimit', 'telemetryEnabled', 'dnsOverHttpsEnabled',
   'dnsOverHttpsProvider', 'dnsOverHttpsCustomProvider', 'cookiePolicy', 'clearCookiesOnExit',
   'trackingProtectionLevel', 'fingerprintProtection', 'refererPolicy', 'webRtcIpProtection',
@@ -1341,6 +1342,7 @@ const osloApi = {
 
   // Updates & Telemetry APIs
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  getReleaseNotes: () => ipcRenderer.invoke('release-notes-get'),
   downloadUpdate: (url, version, checksum = '', checksumAlgorithm = '') => {
     const normalizedVersion = typeof version === 'string' ? version.replace(/^v/i, '') : version;
     const algorithm = normalizeChecksumAlgorithm(checksumAlgorithm, checksum);

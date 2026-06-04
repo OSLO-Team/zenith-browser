@@ -469,11 +469,21 @@ if (addressInput) {
 }
 
 // --- Bookmarks Logic ---
+function isLocalNewTabUrl(url) {
+  const normalized = String(url || '').replace(/\\/g, '/');
+  return !normalized ||
+    normalized === 'oslo://newtab' ||
+    normalized.includes('/newtab/newtab.html') ||
+    normalized.includes('/incognito-newtab/incognito-newtab.html') ||
+    normalized.endsWith('newtab.html') ||
+    normalized.endsWith('incognito-newtab.html');
+}
+
 const addBookmarkBtn = document.getElementById('add-bookmark-btn');
 if (addBookmarkBtn) {
   addBookmarkBtn.addEventListener('click', () => {
     const activeTab = state.tabs[state.activeTabId];
-    if (!activeTab || activeTab.url.includes('newtab.html')) return;
+    if (!activeTab || isLocalNewTabUrl(activeTab.url)) return;
 
     const isBookmarked = state.bookmarks.some(b => b.url === activeTab.url);
     if (isBookmarked) {
@@ -749,7 +759,7 @@ window.oslo.onTabUpdated((tabUpdate) => {
     if (tabUpdate.id === state.activeTabId) {
       if (tabUpdate.url !== undefined) {
         if (addressInput) {
-          if (tabUpdate.url.includes('newtab.html')) {
+          if (isLocalNewTabUrl(tabUpdate.url)) {
             addressInput.value = '';
           } else {
             addressInput.value = tabUpdate.url;
@@ -775,7 +785,7 @@ window.oslo.onTabUpdated((tabUpdate) => {
 
     renderTabs();
 
-    if (tabUpdate.url !== undefined && tabUpdate.url !== oldUrl && !tabUpdate.url.includes('newtab.html') && !tabUpdate.url.startsWith('file://')) {
+    if (tabUpdate.url !== undefined && tabUpdate.url !== oldUrl && !isLocalNewTabUrl(tabUpdate.url) && !tabUpdate.url.startsWith('file://')) {
       window.oslo.logTelemetryEvent('page-navigate', { url: tabUpdate.url });
     }
   }
@@ -814,7 +824,7 @@ window.oslo.onTabSelected((tabId) => {
   if (activeTab) {
     state.activeSpace = activeTab.space || 'Genel';
     if (addressInput) {
-      if (activeTab.url.includes('newtab.html')) {
+      if (isLocalNewTabUrl(activeTab.url)) {
         addressInput.value = '';
       } else {
         addressInput.value = activeTab.url;
@@ -1009,7 +1019,7 @@ function updateSecurityIndicator() {
   if (!indicator) return;
 
   const activeTab = state.tabs[state.activeTabId];
-  if (!activeTab || !activeTab.url || activeTab.url.includes('newtab.html')) {
+  if (!activeTab || !activeTab.url || isLocalNewTabUrl(activeTab.url)) {
     indicator.className = 'security-indicator local';
     indicator.innerHTML = `
       <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -1081,7 +1091,7 @@ function setAutocompleteVisibility(active) {
 function isActiveTabNewTab() {
   const activeTab = state.tabs[state.activeTabId];
   const url = String(activeTab?.url || '');
-  return !activeTab || !url || url === 'oslo://newtab' || url.includes('/newtab/newtab.html') || url.includes('\\newtab\\newtab.html');
+  return !activeTab || isLocalNewTabUrl(url);
 }
 
 function getNewtabTopbarAutocompletePosition() {
@@ -2159,6 +2169,31 @@ function hideUpdateStatusMessage() {
   if (statusMsg) statusMsg.style.display = 'none';
 }
 
+function isUpdateNetworkError(infoOrError) {
+  const code = String(infoOrError?.errorCode || infoOrError?.code || '').toLowerCase();
+  const message = String(infoOrError?.error || infoOrError?.message || '').toLowerCase();
+  return infoOrError?.offline === true ||
+    code === 'network_offline' ||
+    message.includes('err_internet_disconnected') ||
+    message.includes('err_name_not_resolved') ||
+    message.includes('err_network_changed') ||
+    message.includes('err_timed_out') ||
+    message.includes('failed to fetch') ||
+    message.includes('network') ||
+    message.includes('internet') ||
+    message.includes('dns');
+}
+
+function getUpdateCheckErrorText(infoOrError) {
+  return isUpdateNetworkError(infoOrError)
+    ? getUpdateText('update-network-error', 'Internet connection could not be established. Please check your connection and try again.')
+    : getUpdateText('update-check-error', 'Update information could not be loaded.');
+}
+
+function hasUpdateCheckError(info) {
+  return !!(info?.offline || info?.errorCode || info?.error);
+}
+
 function resetUpdateModalUi() {
   const footer = updateModal?.querySelector('.modal-footer');
   const confirmBtn = document.getElementById('btn-confirm-update');
@@ -2239,17 +2274,16 @@ function showUpdateModal(info, { notesOnly = false } = {}) {
 }
 
 document.getElementById('btn-check-updates')?.addEventListener('click', () => {
-  const statusMsg = document.getElementById('update-status-message');
-  if (statusMsg) {
-    statusMsg.textContent = state.currentLang === 'tr' ? 'Güncellemeler denetleniyor...' :
-      (state.currentLang === 'fr' ? 'Recherche de mises à jour...' : 'Checking for updates...');
-    statusMsg.style.display = 'block';
-  }
+  setUpdateStatusMessage(getUpdateText('update-checking', 'Checking for updates...'));
 
   window.oslo.checkForUpdates().then(info => {
-    if (statusMsg) statusMsg.style.display = 'none';
+    if (hasUpdateCheckError(info)) {
+      setUpdateStatusMessage(getUpdateCheckErrorText(info), { autoHide: true });
+      return;
+    }
 
     if (info.updateAvailable) {
+      hideUpdateStatusMessage();
       const currentVersion = document.getElementById('update-current-version');
       const modalVersion = document.getElementById('update-modal-version');
       const modalNotes = document.getElementById('update-modal-notes');
@@ -2271,37 +2305,31 @@ document.getElementById('btn-check-updates')?.addEventListener('click', () => {
       updateModal.dataset.checksumAlgorithm = info.checksumAlgorithm || ((info.sha256 || info.expectedSha256) ? 'sha256' : '');
       updateModal.dataset.sha256 = info.sha256 || '';
     } else {
-      if (statusMsg) {
-        statusMsg.textContent = state.currentLang === 'tr' ? 'Tarayıcınız güncel.' :
-          (state.currentLang === 'fr' ? 'Votre navigateur est à jour.' : 'Your browser is up to date.');
-        statusMsg.style.display = 'block';
-        setTimeout(() => {
-          statusMsg.style.display = 'none';
-        }, 3000);
-      }
+      setUpdateStatusMessage(getUpdateText('update-current-status', 'Your browser is up to date.'), { autoHide: true });
     }
   }).catch(err => {
     console.error('Update check failed:', err);
-    if (statusMsg) {
-      statusMsg.textContent = 'Hata oluştu.';
-      statusMsg.style.display = 'block';
-    }
+    setUpdateStatusMessage(getUpdateCheckErrorText(err), { autoHide: true });
   });
 });
 
 document.getElementById('btn-read-release-notes')?.addEventListener('click', () => {
   setUpdateStatusMessage(getUpdateText('release-notes-loading', 'Güncelleme notları alınıyor...'));
 
-  window.oslo.checkForUpdates().then(info => {
+  const loadReleaseNotes = typeof window.oslo.getReleaseNotes === 'function'
+    ? window.oslo.getReleaseNotes()
+    : window.oslo.checkForUpdates();
+
+  loadReleaseNotes.then(info => {
     hideUpdateStatusMessage();
-    if (info?.error) {
-      setUpdateStatusMessage(getUpdateText('release-notes-error', 'Güncelleme notları alınamadı.'), { autoHide: true });
+    if (hasUpdateCheckError(info)) {
+      setUpdateStatusMessage(getUpdateCheckErrorText(info), { autoHide: true });
       return;
     }
     showUpdateModal(info, { notesOnly: true });
   }).catch(err => {
     console.error('Release notes fetch failed:', err);
-    setUpdateStatusMessage(getUpdateText('release-notes-error', 'Güncelleme notları alınamadı.'), { autoHide: true });
+    setUpdateStatusMessage(getUpdateCheckErrorText(err), { autoHide: true });
   });
 });
 
