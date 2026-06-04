@@ -191,13 +191,62 @@ function checkIncognitoNewTabFlow() {
   expect('incognito newtab: main routes blank incognito tabs to private page', main.includes('INCOGNITO_NEWTAB_PAGE_PATH') && main.includes('getNewTabPagePath(!!tab?.isIncognito)') && main.includes('/incognito-newtab/incognito-newtab.html'), 'main incognito newtab route missing');
   expect('incognito newtab: local newtab detection includes private page', main.includes('isLocalNewTabUrl') && renderer.includes('isLocalNewTabUrl') && settings.includes('/incognito-newtab/incognito-newtab.html') && tabs.includes('/incognito-newtab/incognito-newtab.html'), 'incognito newtab local-page detection missing');
   expect('incognito newtab: preload exposes newtab APIs to private page', preload.includes('/incognito-newtab/incognito-newtab.html') && preload.includes("return 'newtab'"), 'incognito newtab preload page kind missing');
-  expect('incognito newtab: session restore skips private tabs', main.includes('Object.values(tabs).filter(tab => !tab.isIncognito).map'), 'incognito tabs are not excluded from session restore');
+  expect('incognito newtab: session restore skips private tabs', main.includes('.filter(tab => !tab.isIncognito'), 'incognito tabs are not excluded from session restore');
   expect('incognito newtab: content explains privacy boundaries', html.includes('notSavedTitle') && html.includes('visibleTitle') && html.includes('tipsTitle'), 'incognito privacy content missing');
   expect('incognito newtab: dark private theme exists', css.includes('--page-bg') && css.includes('.privacy-badge') && css.includes('.info-card'), 'incognito newtab theme missing');
   expect('incognito newtab: tr/en/fr translations exist', js.includes('tr:') && js.includes('en:') && js.includes('fr:'), 'incognito newtab translations missing');
   expect('incognito newtab: search box is functional', html.includes('incognito-search-form') && css.includes('.incognito-search') && js.includes('formatSearch') && js.includes('activeSearchEngine'), 'incognito newtab search box missing');
   expect('incognito newtab: topbar icons do not print raw SVG text', js.includes('topbarIconFor') && js.includes('${topbarIconFor(item.type)}') && !js.includes('item.icon || iconFor'), 'incognito autocomplete icon rendering can leak raw SVG text');
   expect('incognito newtab: topbar autocomplete is supported', js.includes('onTopbarAutocompleteShow') && js.includes('activateTopbarAutocomplete') && css.includes('.incognito-topbar-autocomplete'), 'incognito topbar autocomplete missing');
+}
+
+function checkProfileFlow() {
+  const main = read('src/main/main.js');
+  const preload = read('src/preload.js');
+  const renderer = read('src/renderer/renderer.js');
+  const indexHtml = read('src/renderer/index.html');
+  const state = read('src/renderer/js/state.js');
+  const style = read('src/renderer/style.css');
+  const i18n = read('src/renderer/js/i18n.js');
+
+  expect('profiles: profile store defaults exist',
+    main.includes('PROFILE_STORE_DEFAULTS') &&
+      main.includes("bookmarks: () => ({ bookmarks: [] })") &&
+      main.includes("session: () => ({ tabs: [], tabOrders: {} })") &&
+      main.includes("passwords: () => ({ passwords: [] })"),
+    'profile-scoped store defaults missing');
+  expect('profiles: main IPC handlers exist',
+    ['profiles-get', 'profiles-create', 'profiles-update', 'profiles-delete', 'profiles-switch'].every(channel => main.includes(`'${channel}'`)),
+    'profile IPC handlers missing');
+  expect('profiles: session partitions are profile-aware',
+    main.includes('getProfilePartitionBase') &&
+      main.includes('GUEST_PROFILE_ID') &&
+      main.includes('getSessionForSpace(spaceName, isIncognito = false, profileId = activeProfileId)'),
+    'profile-aware session partitions missing');
+  expect('profiles: tabs carry profile id and session restore filters it',
+    main.includes('profileId,') &&
+      main.includes('(tab.profileId || DEFAULT_PROFILE_ID) === activeProfileId') &&
+      main.includes('filteredTabOrders'),
+    'tab profile id or filtered restore data missing');
+  expect('profiles: preload exposes profile APIs',
+    ['getProfiles', 'createProfile', 'updateProfile', 'deleteProfile', 'switchProfile', 'onProfileSwitched', 'onProfilesUpdated'].every(name => preload.includes(name)),
+    'profile preload bridge missing');
+  expect('profiles: renderer profile selector and manager exist',
+    indexHtml.includes('profile-selector-btn') &&
+      indexHtml.includes('profile-manager-modal') &&
+      renderer.includes('renderProfileSelector') &&
+      renderer.includes('applyProfilePayload') &&
+      renderer.includes('loadProfileScopedData'),
+    'profile UI flow missing');
+  expect('profiles: renderer state tracks active profile',
+    state.includes('profiles: []') && state.includes("activeProfileId: 'default'") && state.includes('activeProfile: null'),
+    'profile state fields missing');
+  expect('profiles: profile menu can escape sidebar clipping',
+    style.includes('.profile-menu') && style.includes('z-index: var(--z-menu)') && style.includes('overflow: visible'),
+    'profile menu layering styles missing');
+  expect('profiles: translations exist for tr/en/fr',
+    i18n.includes("'profile-manager-title'") && i18n.includes("'profile-guest-desc'") && i18n.includes("'profile-delete-confirm'"),
+    'profile translations missing');
 }
 
 function checkVideoFullscreenFlow() {
@@ -281,6 +330,7 @@ function run() {
   checkModalLayeringFlow();
   checkTransparentNewtabWidgets();
   checkIncognitoNewTabFlow();
+  checkProfileFlow();
   checkVideoFullscreenFlow();
   checkUpdateConnectivityFlow();
   checkBuildConfig();

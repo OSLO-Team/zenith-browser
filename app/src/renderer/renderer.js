@@ -3,8 +3,8 @@ import { state } from './js/state.js';
 import { applyLanguage, translations } from './js/i18n.js';
 import { renderTabs, updateBookmarkIcon } from './js/tabs.js';
 import { initPanels, renderBookmarks, renderBookmarksBar, renderHistory, renderDownloads } from './js/panels.js';
-import { initSettings, syncContentAreaSurface } from './js/settings.js';
-import { installNativeAlertBridge } from './js/modal-dialogs.js';
+import { initSettings, syncContentAreaSurface, applySettingChange } from './js/settings.js';
+import { installNativeAlertBridge, showOsloConfirm } from './js/modal-dialogs.js';
 
 installNativeAlertBridge('OSLO Browser');
 
@@ -77,6 +77,21 @@ const incognitoBtn = document.getElementById('incognito-btn');
 const historyBtn = document.getElementById('history-btn');
 const downloadsBtn = document.getElementById('downloads-btn');
 const settingsBtn = document.getElementById('settings-btn');
+const profileSelectorBtn = document.getElementById('profile-selector-btn');
+const profileSelectorAvatar = document.getElementById('profile-selector-avatar');
+const profileSelectorName = document.getElementById('profile-selector-name');
+const profileMenu = document.getElementById('profile-menu');
+const profileSwitcher = document.querySelector('.profile-switcher');
+const profileManagerModal = document.getElementById('profile-manager-modal');
+const closeProfileManagerModal = document.getElementById('close-profile-manager-modal');
+const profileManagerList = document.getElementById('profile-manager-list');
+const profileEditId = document.getElementById('profile-edit-id');
+const profileNameInput = document.getElementById('profile-name-input');
+const profileAvatarInput = document.getElementById('profile-avatar-input');
+const profileColorInput = document.getElementById('profile-color-input');
+const profileNewBtn = document.getElementById('profile-new-btn');
+const profileSaveBtn = document.getElementById('profile-save-btn');
+const profileDeleteBtn = document.getElementById('profile-delete-btn');
 
 const bookmarksPanel = document.getElementById('bookmarks-panel');
 const historyPanel = document.getElementById('history-panel');
@@ -95,9 +110,350 @@ const bookmarkEditName = document.getElementById('bookmark-edit-name');
 const bookmarkEditUrl = document.getElementById('bookmark-edit-url');
 const tabContextMenu = document.getElementById('tab-context-menu');
 let contentPreviewClearTimer = null;
+let selectedProfileIdForEdit = 'default';
+let suppressNextProfileSwitchedEvent = false;
 
 function getUiText(key, fallback) {
   return translations[state.currentLang]?.[key] || translations.tr?.[key] || fallback;
+}
+
+function normalizeProfilePayload(payload = {}) {
+  const profiles = Array.isArray(payload.profiles) ? payload.profiles : [];
+  state.profiles = profiles.map(profile => ({
+    id: String(profile.id || ''),
+    name: String(profile.name || getUiText('profile', 'Profil')),
+    avatar: String(profile.avatar || profile.name?.charAt(0) || 'P').slice(0, 2).toUpperCase(),
+    color: /^#[0-9a-f]{6}$/i.test(String(profile.color || '')) ? profile.color : '#00ddff',
+    isDefault: !!profile.isDefault,
+    isGuest: !!profile.isGuest
+  })).filter(profile => profile.id);
+  state.activeProfileId = payload.activeProfileId || 'default';
+  state.activeProfile = state.profiles.find(profile => profile.id === state.activeProfileId) || state.profiles[0] || null;
+  selectedProfileIdForEdit = state.activeProfile?.isGuest ? 'default' : (state.activeProfile?.id || 'default');
+}
+
+function getProfileDescription(profile) {
+  if (!profile) return '';
+  if (profile.isGuest) return getUiText('profile-guest-desc', 'Temporary browsing');
+  if (profile.isDefault) return getUiText('profile-default-desc', 'Default profile');
+  return getUiText('profile-profile-desc', 'Separate data space');
+}
+
+function renderProfileSelector() {
+  if (!profileSelectorBtn || !profileSelectorAvatar || !profileSelectorName) return;
+  const profile = state.activeProfile || state.profiles[0] || { name: getUiText('profile', 'Profil'), avatar: 'P', color: '#00ddff' };
+  profileSelectorAvatar.textContent = profile.avatar || (profile.name || 'P').charAt(0).toUpperCase();
+  profileSelectorAvatar.style.setProperty('--profile-color', profile.color || '#00ddff');
+  profileSelectorName.textContent = profile.name || getUiText('profile', 'Profil');
+  profileSelectorBtn.title = `${getUiText('profile', 'Profil')}: ${profile.name || ''}`;
+}
+
+function renderProfileMenu() {
+  if (!profileMenu) return;
+  const profileRows = (state.profiles || []).map(profile => {
+    const isActive = profile.id === state.activeProfileId;
+    return `
+      <button class="profile-menu-item ${isActive ? 'active' : ''}" data-profile-switch="${escapeHtml(profile.id)}">
+        <span class="profile-avatar" style="--profile-color: ${escapeHtml(profile.color || '#00ddff')}">${escapeHtml(profile.avatar || 'P')}</span>
+        <span class="profile-menu-meta">
+          <span class="profile-menu-name">${escapeHtml(profile.name)}</span>
+          <span class="profile-menu-desc">${escapeHtml(getProfileDescription(profile))}</span>
+        </span>
+        <span class="profile-menu-check">${isActive ? '✓' : ''}</span>
+      </button>
+    `;
+  }).join('');
+
+  profileMenu.innerHTML = `
+    ${profileRows}
+    <div class="profile-menu-divider"></div>
+    <button class="profile-menu-action" id="profile-menu-manage">
+      <span class="profile-avatar" style="--profile-color: var(--accent-color)">+</span>
+      <span class="profile-menu-meta">
+        <span class="profile-menu-name">${escapeHtml(getUiText('profile-manage', 'Manage profiles'))}</span>
+        <span class="profile-menu-desc">${escapeHtml(getUiText('profile-manage-desc', 'Create, edit, or delete'))}</span>
+      </span>
+    </button>
+  `;
+
+  profileMenu.querySelectorAll('[data-profile-switch]').forEach(button => {
+    button.addEventListener('click', () => {
+      profileSwitcher?.classList.remove('open');
+      switchProfile(button.getAttribute('data-profile-switch'));
+    });
+  });
+  profileMenu.querySelector('#profile-menu-manage')?.addEventListener('click', () => {
+    profileSwitcher?.classList.remove('open');
+    openProfileManager();
+  });
+}
+
+function renderProfiles() {
+  renderProfileSelector();
+  renderProfileMenu();
+  renderProfileManager();
+}
+
+window.renderProfiles = renderProfiles;
+
+function getEditableProfiles() {
+  return (state.profiles || []).filter(profile => !profile.isGuest);
+}
+
+function selectProfileForEditing(profileId) {
+  const editableProfiles = getEditableProfiles();
+  const profile = editableProfiles.find(item => item.id === profileId) || editableProfiles[0] || null;
+  selectedProfileIdForEdit = profile?.id || '';
+  if (profileEditId) profileEditId.value = selectedProfileIdForEdit;
+  if (profileNameInput) profileNameInput.value = profile?.name || '';
+  if (profileAvatarInput) profileAvatarInput.value = profile?.avatar || '';
+  if (profileColorInput) profileColorInput.value = profile?.color || '#00ddff';
+  if (profileDeleteBtn) profileDeleteBtn.disabled = !profile || profile.isDefault;
+  renderProfileManager();
+}
+
+function renderProfileManager() {
+  if (!profileManagerList) return;
+  const rows = getEditableProfiles().map(profile => `
+    <button class="profile-manager-row ${profile.id === selectedProfileIdForEdit ? 'active' : ''}" data-profile-edit="${escapeHtml(profile.id)}">
+      <span class="profile-avatar" style="--profile-color: ${escapeHtml(profile.color || '#00ddff')}">${escapeHtml(profile.avatar || 'P')}</span>
+      <span class="profile-menu-meta">
+        <span class="profile-manager-name">${escapeHtml(profile.name)}</span>
+        <span class="profile-menu-desc">${escapeHtml(getProfileDescription(profile))}</span>
+      </span>
+      <span class="profile-manager-badge">${profile.id === state.activeProfileId ? escapeHtml(getUiText('profile-current', 'Current')) : ''}</span>
+    </button>
+  `).join('');
+
+  const guest = (state.profiles || []).find(profile => profile.isGuest);
+  const guestRow = guest ? `
+    <button class="profile-manager-row guest" data-profile-switch="${escapeHtml(guest.id)}">
+      <span class="profile-avatar" style="--profile-color: ${escapeHtml(guest.color || '#8b5cf6')}">${escapeHtml(guest.avatar || 'M')}</span>
+      <span class="profile-menu-meta">
+        <span class="profile-manager-name">${escapeHtml(guest.name)}</span>
+        <span class="profile-menu-desc">${escapeHtml(getProfileDescription(guest))}</span>
+      </span>
+      <span class="profile-manager-badge">${guest.id === state.activeProfileId ? escapeHtml(getUiText('profile-current', 'Current')) : ''}</span>
+    </button>
+  ` : '';
+
+  profileManagerList.innerHTML = rows + guestRow;
+  profileManagerList.querySelectorAll('[data-profile-edit]').forEach(button => {
+    button.addEventListener('click', () => selectProfileForEditing(button.getAttribute('data-profile-edit')));
+  });
+  profileManagerList.querySelectorAll('[data-profile-switch]').forEach(button => {
+    button.addEventListener('click', () => {
+      closeProfileManager();
+      switchProfile(button.getAttribute('data-profile-switch'));
+    });
+  });
+}
+
+function openProfileManager() {
+  if (!profileManagerModal) return;
+  selectProfileForEditing(selectedProfileIdForEdit || state.activeProfileId || 'default');
+  profileManagerModal.classList.add('open');
+  window.dispatchEvent(new Event('resize'));
+}
+
+function closeProfileManager() {
+  profileManagerModal?.classList.remove('open');
+  window.dispatchEvent(new Event('resize'));
+}
+
+function prepareNewProfileForm() {
+  selectedProfileIdForEdit = '';
+  if (profileEditId) profileEditId.value = '';
+  if (profileNameInput) profileNameInput.value = '';
+  if (profileAvatarInput) profileAvatarInput.value = '';
+  if (profileColorInput) profileColorInput.value = '#00ddff';
+  if (profileDeleteBtn) profileDeleteBtn.disabled = true;
+  profileNameInput?.focus();
+  renderProfileManager();
+}
+
+function normalizeBookmarksForState(bookmarks = []) {
+  let modified = false;
+  const generateId = () => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return 'b_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+  };
+
+  const normalized = (bookmarks || []).map(bookmark => {
+    const next = { ...bookmark };
+    if (!next.id) {
+      next.id = generateId();
+      modified = true;
+    }
+    if (next.folderId === undefined) {
+      next.folderId = null;
+      modified = true;
+    }
+    return next;
+  });
+  return { normalized, modified };
+}
+
+async function loadBookmarksForActiveProfile() {
+  const bookmarks = await window.oslo.getBookmarks();
+  const { normalized, modified } = normalizeBookmarksForState(bookmarks || []);
+  state.bookmarks = normalized;
+  if (modified) {
+    state.bookmarks = await window.oslo.setBookmarks(state.bookmarks);
+  }
+  updateBookmarkIcon();
+  renderBookmarksBar();
+  if (bookmarksPanel?.classList.contains('open')) renderBookmarks();
+}
+
+function normalizeSpacesForState(spaces) {
+  return (spaces || [{ name: 'Genel', emoji: '🌐', color: '#000000' }]).map(space => {
+    if (typeof space === 'object' && space.name === 'Genel') {
+      return { ...space, color: '#000000' };
+    }
+    return space;
+  });
+}
+
+async function loadSpacesForActiveProfile() {
+  state.spaces = normalizeSpacesForState(await window.oslo.getSpaces());
+  if (!state.spaces.some(space => (typeof space === 'string' ? space : space.name) === state.activeSpace)) {
+    state.activeSpace = 'Genel';
+  }
+  renderSpaces();
+}
+
+async function loadDownloadsForActiveProfile() {
+  state.downloads = {};
+  const downloads = await window.oslo.getDownloads();
+  (downloads || []).forEach(download => {
+    state.downloads[download.id] = download;
+  });
+  renderDownloads();
+}
+
+async function restoreTabsForActiveProfile(settings = null) {
+  const activeSettings = settings || await window.oslo.getAllSettings();
+  if (activeSettings && typeof activeSettings === 'object') {
+    Object.keys(activeSettings).forEach(key => applySettingChange(key, activeSettings[key]));
+  }
+
+  state.tabs = {};
+  state.tabOrder = [];
+  state.activeTabId = null;
+
+  if (!activeSettings?.sessionRestoreEnabled) {
+    window.oslo.createTab({ space: state.activeSpace });
+    renderTabs();
+    return;
+  }
+
+  const sessionData = await window.oslo.getSession();
+  const savedTabs = sessionData.tabs || [];
+  if (!savedTabs.length) {
+    window.oslo.createTab({ space: state.activeSpace });
+    renderTabs();
+    return;
+  }
+
+  let lastActiveTabId = savedTabs[0].id;
+  let latestActiveTime = 0;
+  savedTabs.forEach(tab => {
+    state.tabs[tab.id] = {
+      id: tab.id,
+      url: tab.url,
+      profileId: tab.profileId || state.activeProfileId,
+      space: tab.space,
+      isPinned: !!tab.isPinned,
+      title: tab.title,
+      zoomFactor: tab.zoomFactor || 1.0,
+      lastActive: tab.lastActive
+    };
+    state.tabOrder.push(tab.id);
+    window.oslo.createTab({
+      id: tab.id,
+      url: tab.url,
+      space: tab.space,
+      isPinned: !!tab.isPinned,
+      zoomFactor: tab.zoomFactor || 1.0
+    });
+    if ((tab.lastActive || 0) > latestActiveTime) {
+      latestActiveTime = tab.lastActive || 0;
+      lastActiveTabId = tab.id;
+    }
+  });
+
+  setTimeout(() => {
+    window.oslo.selectTab(lastActiveTabId);
+  }, 200);
+}
+
+async function loadProfileScopedData({ restoreTabs = true, settings = null } = {}) {
+  state.activeSpace = 'Genel';
+  await Promise.all([
+    loadBookmarksForActiveProfile(),
+    loadSpacesForActiveProfile(),
+    loadDownloadsForActiveProfile()
+  ]);
+
+  if (restoreTabs) {
+    await restoreTabsForActiveProfile(settings);
+  }
+
+  closeAutocompleteDropdown();
+  if (addressInput) addressInput.value = '';
+  renderTabs();
+  renderSpaces();
+  renderProfiles();
+  updateBookmarkIcon();
+  updateSecurityIndicator();
+  updateNavButtonsState();
+  updateReaderModeButton();
+  syncContentAreaSurface();
+  setTimeout(sendBounds, 120);
+}
+
+async function loadProfiles() {
+  if (typeof window.oslo.getProfiles !== 'function') return;
+  const payload = await window.oslo.getProfiles();
+  normalizeProfilePayload(payload || {});
+  renderProfiles();
+}
+
+async function applyProfilePayload(payload, { restoreTabs = true } = {}) {
+  normalizeProfilePayload(payload || {});
+  if (payload?.settings && typeof payload.settings === 'object') {
+    Object.keys(payload.settings).forEach(key => applySettingChange(key, payload.settings[key]));
+  }
+  await loadProfileScopedData({ restoreTabs, settings: payload?.settings || null });
+}
+
+function showProfileError(message) {
+  console.warn(message);
+  if (!profileSelectorBtn) return;
+  const previousTitle = profileSelectorBtn.title;
+  profileSelectorBtn.title = message;
+  profileSelectorBtn.classList.add('profile-error');
+  setTimeout(() => {
+    profileSelectorBtn.title = previousTitle;
+    profileSelectorBtn.classList.remove('profile-error');
+  }, 1800);
+}
+
+async function switchProfile(profileId) {
+  if (!profileId || profileId === state.activeProfileId || typeof window.oslo.switchProfile !== 'function') return;
+  try {
+    suppressNextProfileSwitchedEvent = true;
+    const payload = await window.oslo.switchProfile(profileId);
+    await applyProfilePayload(payload, { restoreTabs: true });
+    setTimeout(() => { suppressNextProfileSwitchedEvent = false; }, 0);
+  } catch (error) {
+    suppressNextProfileSwitchedEvent = false;
+    console.error('Failed to switch profile:', error);
+    showProfileError(getUiText('profile-switch-failed', 'Profile could not be switched.'));
+  }
 }
 
 function hasActiveContentPreview() {
@@ -284,6 +640,7 @@ export function sendBounds() {
   const isPermissionsOpen = document.getElementById('permissions-manager-modal')?.classList.contains('open');
   const isPasswordAuditOpen = document.getElementById('password-audit-modal')?.classList.contains('open');
   const isSecurityInfoOpen = document.getElementById('security-info-modal')?.classList.contains('open');
+  const isProfileManagerOpen = profileManagerModal?.classList.contains('open');
   const isSpaceOpen = document.getElementById('space-modal')?.classList.contains('open');
   const isSpaceDeleteOpen = document.getElementById('space-delete-modal')?.classList.contains('open');
   const isPermissionBarOpen = document.getElementById('permission-bar')?.style.display === 'flex';
@@ -312,6 +669,7 @@ export function sendBounds() {
     isPermissionsOpen ||
     isPasswordAuditOpen ||
     isSecurityInfoOpen ||
+    isProfileManagerOpen ||
     isSpaceOpen ||
     isSpaceDeleteOpen ||
     isTabContextMenuOverContent ||
@@ -384,6 +742,84 @@ if (incognitoBtn) {
     window.oslo.createTab({ isIncognito: true, space: state.activeSpace });
   });
 }
+
+profileSelectorBtn?.addEventListener('click', (event) => {
+  event.stopPropagation();
+  profileSwitcher?.classList.toggle('open');
+  renderProfileMenu();
+});
+
+closeProfileManagerModal?.addEventListener('click', closeProfileManager);
+profileManagerModal?.addEventListener('click', (event) => {
+  if (event.target === profileManagerModal) closeProfileManager();
+});
+
+profileNewBtn?.addEventListener('click', prepareNewProfileForm);
+
+profileSaveBtn?.addEventListener('click', async () => {
+  const name = profileNameInput?.value.trim() || '';
+  if (!name) {
+    profileNameInput?.focus();
+    return;
+  }
+
+  const avatar = (profileAvatarInput?.value.trim() || name.charAt(0) || 'P').slice(0, 2).toUpperCase();
+  const color = profileColorInput?.value || '#00ddff';
+  const id = profileEditId?.value || '';
+
+  try {
+    if (!id) suppressNextProfileSwitchedEvent = true;
+    const payload = id
+      ? await window.oslo.updateProfile({ id, name, avatar, color })
+      : await window.oslo.createProfile({ name, avatar, color });
+    await applyProfilePayload(payload, { restoreTabs: !id });
+    if (!id) setTimeout(() => { suppressNextProfileSwitchedEvent = false; }, 0);
+    if (id) {
+      selectProfileForEditing(id);
+    } else {
+      closeProfileManager();
+    }
+  } catch (error) {
+    suppressNextProfileSwitchedEvent = false;
+    console.error('Failed to save profile:', error);
+    showProfileError(getUiText('profile-save-failed', 'Profile could not be saved.'));
+  }
+});
+
+profileDeleteBtn?.addEventListener('click', async () => {
+  const id = profileEditId?.value || '';
+  const profile = getEditableProfiles().find(item => item.id === id);
+  if (!profile || profile.isDefault) return;
+
+  const confirmText = (getUiText('profile-delete-confirm', 'Delete profile "{name}"? This cannot be undone.')).replace('{name}', profile.name);
+  const confirmed = await showOsloConfirm(getUiText('profile-manager-title', 'Manage Profiles'), confirmText, { danger: true });
+  if (!confirmed) return;
+
+  try {
+    const wasActive = id === state.activeProfileId;
+    if (wasActive) suppressNextProfileSwitchedEvent = true;
+    const payload = await window.oslo.deleteProfile(id);
+    await applyProfilePayload(payload, { restoreTabs: wasActive });
+    if (wasActive) setTimeout(() => { suppressNextProfileSwitchedEvent = false; }, 0);
+    if (!wasActive) {
+      normalizeProfilePayload(payload || {});
+      selectProfileForEditing('default');
+      renderProfiles();
+    } else {
+      closeProfileManager();
+    }
+  } catch (error) {
+    suppressNextProfileSwitchedEvent = false;
+    console.error('Failed to delete profile:', error);
+    showProfileError(getUiText('profile-delete-failed', 'Profile could not be deleted.'));
+  }
+});
+
+document.addEventListener('click', (event) => {
+  if (profileSwitcher && !profileSwitcher.contains(event.target)) {
+    profileSwitcher.classList.remove('open');
+  }
+});
 
 // --- Navigation Controls ---
 if (navBack) {
@@ -734,7 +1170,20 @@ window.oslo.onNewtabTopbarAutocompleteClose?.(() => {
 });
 
 // --- Listen to Events from Main Process ---
+window.oslo.onProfileSwitched?.((payload) => {
+  if (suppressNextProfileSwitchedEvent) return;
+  applyProfilePayload(payload, { restoreTabs: true }).catch(error => {
+    console.error('Failed to apply switched profile:', error);
+  });
+});
+
+window.oslo.onProfilesUpdated?.((payload) => {
+  normalizeProfilePayload(payload || {});
+  renderProfiles();
+});
+
 window.oslo.onTabCreated((tab) => {
+  if (tab.profileId && tab.profileId !== state.activeProfileId) return;
   state.tabs[tab.id] = tab;
   if (!state.tabOrder.includes(tab.id)) {
     state.tabOrder.push(tab.id);
@@ -1834,112 +2283,12 @@ function init() {
   // Initialize settings options and load settings store
   initSettings();
 
-  // Load Bookmarks initially
-  window.oslo.getBookmarks().then(bk => {
-    let modified = false;
-    const generateId = () => {
-      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-        return crypto.randomUUID();
-      }
-      return 'b_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    };
-
-    const bookmarksWithIds = (bk || []).map(b => {
-      let isChanged = false;
-      if (!b.id) {
-        b.id = generateId();
-        isChanged = true;
-      }
-      if (b.folderId === undefined) {
-        b.folderId = null;
-        isChanged = true;
-      }
-      if (isChanged) {
-        modified = true;
-      }
-      return b;
+  loadProfiles()
+    .then(() => loadProfileScopedData({ restoreTabs: true }))
+    .catch(error => {
+      console.error('Failed to initialize profile data:', error);
+      window.oslo.createTab({ space: state.activeSpace });
     });
-
-    state.bookmarks = bookmarksWithIds;
-
-    if (modified) {
-      window.oslo.setBookmarks(state.bookmarks).then(updated => {
-        state.bookmarks = updated;
-        updateBookmarkIcon();
-        renderBookmarksBar();
-      });
-    } else {
-      updateBookmarkIcon();
-      renderBookmarksBar();
-    }
-  });
-
-  // Load Spaces initially
-  window.oslo.getSpaces().then(spaces => {
-    state.spaces = (spaces || [{ name: 'Genel', emoji: '🌐', color: '#000000' }]).map(s => {
-      if (typeof s === 'object' && s.name === 'Genel') {
-        s.color = '#000000';
-      }
-      return s;
-    });
-    renderSpaces();
-
-    // Load session restore setting and restore if enabled
-    window.oslo.getAllSettings().then(settings => {
-      if (settings.sessionRestoreEnabled) {
-        window.oslo.getSession().then(sessionData => {
-          const savedTabs = sessionData.tabs || [];
-          if (savedTabs.length > 0) {
-            state.tabs = {};
-            state.tabOrder = [];
-
-            let lastActiveTabId = savedTabs[0].id;
-            let latestActiveTime = 0;
-
-            savedTabs.forEach(t => {
-              state.tabs[t.id] = {
-                id: t.id,
-                url: t.url,
-                space: t.space,
-                isPinned: !!t.isPinned,
-                title: t.title,
-                zoomFactor: t.zoomFactor || 1.0,
-                lastActive: t.lastActive
-              };
-              state.tabOrder.push(t.id);
-              window.oslo.createTab({
-                id: t.id,
-                url: t.url,
-                space: t.space,
-                isPinned: !!t.isPinned,
-                zoomFactor: t.zoomFactor || 1.0
-              });
-              if (t.lastActive > latestActiveTime) {
-                latestActiveTime = t.lastActive;
-                lastActiveTabId = t.id;
-              }
-            });
-
-            setTimeout(() => {
-              window.oslo.selectTab(lastActiveTabId);
-            }, 200);
-          } else {
-            window.oslo.createTab({ space: state.activeSpace });
-          }
-        });
-      } else {
-        window.oslo.createTab({ space: state.activeSpace });
-      }
-    });
-  });
-
-  // Load Downloads initially
-  window.oslo.getDownloads().then(saved => {
-    (saved || []).forEach(d => {
-      state.downloads[d.id] = d;
-    });
-    renderDownloads();
-  });
 
   // Setup initial states
   updateNavButtonsState();
@@ -1977,6 +2326,7 @@ window.addEventListener('keydown', (e) => {
     const modals = [
       document.getElementById('clear-history-modal'),
       document.getElementById('bookmark-edit-modal'),
+      document.getElementById('profile-manager-modal'),
       document.getElementById('folder-create-modal'),
       document.getElementById('update-modal'),
       document.getElementById('telemetry-log-modal'),
@@ -2242,8 +2592,8 @@ function showUpdateModal(info, { notesOnly = false } = {}) {
   if (latestVersionChip) latestVersionChip.style.display = notesOnly ? 'none' : '';
   if (versionArrow) versionArrow.style.display = notesOnly ? 'none' : '';
 
-  if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.3'}`;
-  if (modalVersion) modalVersion.textContent = `v${info.latestVersion || info.currentVersion || '1.0.0-beta.3'}`;
+  if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.4'}`;
+  if (modalVersion) modalVersion.textContent = `v${info.latestVersion || info.currentVersion || '1.0.0-beta.4'}`;
   if (modalNotes) {
     modalNotes.innerHTML = releaseNotes
       ? parseMarkdown(releaseNotes)
@@ -2288,7 +2638,7 @@ document.getElementById('btn-check-updates')?.addEventListener('click', () => {
       const modalVersion = document.getElementById('update-modal-version');
       const modalNotes = document.getElementById('update-modal-notes');
 
-      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.3'}`;
+      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.4'}`;
       if (modalVersion) modalVersion.textContent = `v${info.latestVersion}`;
       if (modalNotes) modalNotes.innerHTML = parseMarkdown(info.releaseNotes);
 
@@ -2345,7 +2695,7 @@ document.getElementById('btn-confirm-update')?.addEventListener('click', () => {
   const url = updateModal?.dataset.downloadUrl;
   const checksum = updateModal?.dataset.checksum || updateModal?.dataset.sha256 || '';
   const checksumAlgorithm = updateModal?.dataset.checksumAlgorithm || (checksum.length === 128 ? 'sha512' : 'sha256');
-  const version = (document.getElementById('update-modal-version')?.textContent || '1.0.0-beta.3').replace(/^v/, '');
+  const version = (document.getElementById('update-modal-version')?.textContent || '1.0.0-beta.4').replace(/^v/, '');
 
   if (!url) {
     window.oslo.openExternalLink('https://oslobrowser.com/download');
@@ -2432,7 +2782,7 @@ function autoCheckForUpdates() {
       const modalVersion = document.getElementById('update-modal-version');
       const modalNotes = document.getElementById('update-modal-notes');
 
-      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.3'}`;
+      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.4'}`;
       if (modalVersion) modalVersion.textContent = `v${info.latestVersion}`;
       if (modalNotes) modalNotes.innerHTML = parseMarkdown(info.releaseNotes);
 
@@ -2482,7 +2832,7 @@ function buildTelemetryReport(logs, systemInfo = {}, options = {}) {
   const allCrashes = getTelemetryArray(logs, 'crashes');
   const payload = {
     generatedAt: new Date().toISOString(),
-    appVersion: systemInfo?.appVersion || '1.0.0-beta.3',
+    appVersion: systemInfo?.appVersion || '1.0.0-beta.4',
     electron: systemInfo?.electron || '',
     chrome: systemInfo?.chrome || '',
     platform: navigator.platform || '',
@@ -2509,7 +2859,7 @@ function buildTelemetryIssueBody(logs, systemInfo = {}, copiedToClipboard = fals
   return [
     '## OSLO Browser Telemetry Report',
     '',
-    `Version: ${systemInfo?.appVersion || '1.0.0-beta.3'}`,
+    `Version: ${systemInfo?.appVersion || '1.0.0-beta.4'}`,
     `Generated at: ${new Date().toISOString()}`,
     `Events: ${allEvents.length}`,
     `Crashes/errors: ${allCrashes.length}`,

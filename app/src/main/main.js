@@ -102,18 +102,200 @@ function createDefaultSettings() {
   return { ...FACTORY_DEFAULT_SETTINGS };
 }
 
-const settingsStore = new Store('settings', createDefaultSettings());
-const bookmarksStore = new Store('bookmarks', { bookmarks: [] });
-const historyStore = new Store('history', { history: [] });
-const downloadsStore = new Store('downloads', { downloads: [] });
-const spacesStore = new Store('spaces', { spaces: ['Genel'] });
+function cloneStoreData(data) {
+  return JSON.parse(JSON.stringify(data || {}));
+}
+
+class MemoryStore {
+  constructor(defaults = {}) {
+    this.data = cloneStoreData(defaults);
+  }
+
+  get(key) {
+    return this.data[key];
+  }
+
+  set(key, val) {
+    this.data[key] = val;
+  }
+
+  replace(data) {
+    this.data = cloneStoreData(data);
+  }
+
+  push(key, item) {
+    if (!Array.isArray(this.data[key])) this.data[key] = [];
+    this.data[key].push(item);
+  }
+
+  filter(key, predicate) {
+    if (Array.isArray(this.data[key])) {
+      this.data[key] = this.data[key].filter(predicate);
+    }
+  }
+}
+
+const DEFAULT_PROFILE_ID = 'default';
+const GUEST_PROFILE_ID = 'guest';
+const PROFILE_STORE_DEFAULTS = {
+  settings: createDefaultSettings,
+  bookmarks: () => ({ bookmarks: [] }),
+  history: () => ({ history: [] }),
+  downloads: () => ({ downloads: [] }),
+  spaces: () => ({ spaces: ['Genel'] }),
+  session: () => ({ tabs: [], tabOrders: {} }),
+  passwords: () => ({ passwords: [] }),
+  permissions: () => ({ permissions: {} }),
+  certificateExceptions: () => ({ exceptions: {} }),
+  passwordBreachCache: () => ({ cache: {} })
+};
+
+function createDefaultProfilesState() {
+  const now = Date.now();
+  return {
+    activeProfileId: DEFAULT_PROFILE_ID,
+    profiles: [{
+      id: DEFAULT_PROFILE_ID,
+      name: 'Kişisel',
+      avatar: 'K',
+      color: '#00ddff',
+      isDefault: true,
+      createdAt: now,
+      updatedAt: now
+    }]
+  };
+}
+
+const profilesStore = new Store('profiles', createDefaultProfilesState());
 const telemetryStore = new Store('telemetry', { events: [], crashes: [] });
 const faviconCacheStore = new Store('favicon-cache', { cache: {} });
-const sessionStore = new Store('session', { tabs: [], tabOrders: {} });
-const passwordsStore = new Store('passwords', { passwords: [] });
-const certificateExceptionsStore = new Store('certificate-exceptions', { exceptions: {} });
-const passwordBreachCacheStore = new Store('password-breach-cache', { cache: {} });
+let settingsStore;
+let bookmarksStore;
+let historyStore;
+let downloadsStore;
+let spacesStore;
+let sessionStore;
+let passwordsStore;
+let permissionsStore;
+let certificateExceptionsStore;
+let passwordBreachCacheStore;
+let activeProfileId = DEFAULT_PROFILE_ID;
 const PASSWORD_ENCODING = 'safeStorage:v1';
+
+function slugifyProfileId(value) {
+  const base = String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 36);
+  return base || `profile-${Date.now().toString(36)}`;
+}
+
+function normalizeProfile(profile, fallback = {}) {
+  const name = String(profile?.name || fallback.name || 'Profil').trim().slice(0, 48) || 'Profil';
+  const id = profile?.id === DEFAULT_PROFILE_ID
+    ? DEFAULT_PROFILE_ID
+    : slugifyProfileId(profile?.id || name);
+  return {
+    id,
+    name,
+    avatar: String(profile?.avatar || name.charAt(0) || 'P').trim().slice(0, 2).toUpperCase(),
+    color: /^#[0-9a-f]{6}$/i.test(String(profile?.color || '')) ? profile.color : (fallback.color || '#00ddff'),
+    isDefault: id === DEFAULT_PROFILE_ID,
+    createdAt: Number(profile?.createdAt) || Date.now(),
+    updatedAt: Number(profile?.updatedAt) || Date.now()
+  };
+}
+
+function getPersistedProfiles() {
+  const raw = profilesStore.get('profiles');
+  const fallback = createDefaultProfilesState().profiles;
+  const normalized = (Array.isArray(raw) && raw.length ? raw : fallback).map(normalizeProfile);
+  if (!normalized.some(profile => profile.id === DEFAULT_PROFILE_ID)) {
+    normalized.unshift(normalizeProfile({ ...fallback[0], id: DEFAULT_PROFILE_ID }));
+  }
+  const deduped = [];
+  const seen = new Set();
+  normalized.forEach(profile => {
+    if (seen.has(profile.id) || profile.id === GUEST_PROFILE_ID) return;
+    seen.add(profile.id);
+    deduped.push(profile);
+  });
+  if (JSON.stringify(raw) !== JSON.stringify(deduped)) {
+    profilesStore.set('profiles', deduped);
+  }
+  return deduped;
+}
+
+function getGuestProfile() {
+  return {
+    id: GUEST_PROFILE_ID,
+    name: 'Misafir',
+    avatar: 'M',
+    color: '#8b5cf6',
+    isGuest: true,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+}
+
+function getProfileStoreFileName(profileId, storeName) {
+  if (profileId === DEFAULT_PROFILE_ID) {
+    if (storeName === 'certificateExceptions') return 'certificate-exceptions';
+    if (storeName === 'passwordBreachCache') return 'password-breach-cache';
+    return storeName;
+  }
+  const safeId = slugifyProfileId(profileId);
+  const fileStoreName = storeName
+    .replace(/[A-Z]/g, char => `-${char.toLowerCase()}`)
+    .replace(/^-/, '');
+  return `profile-${safeId}-${fileStoreName}`;
+}
+
+function createProfileStore(profileId, storeName) {
+  const defaultsFactory = PROFILE_STORE_DEFAULTS[storeName];
+  const defaults = defaultsFactory ? defaultsFactory() : {};
+  if (profileId === GUEST_PROFILE_ID) return new MemoryStore(defaults);
+  return new Store(getProfileStoreFileName(profileId, storeName), defaults);
+}
+
+function loadProfileStores(profileId) {
+  activeProfileId = profileId || DEFAULT_PROFILE_ID;
+  settingsStore = createProfileStore(activeProfileId, 'settings');
+  bookmarksStore = createProfileStore(activeProfileId, 'bookmarks');
+  historyStore = createProfileStore(activeProfileId, 'history');
+  downloadsStore = createProfileStore(activeProfileId, 'downloads');
+  spacesStore = createProfileStore(activeProfileId, 'spaces');
+  sessionStore = createProfileStore(activeProfileId, 'session');
+  passwordsStore = createProfileStore(activeProfileId, 'passwords');
+  permissionsStore = createProfileStore(activeProfileId, 'permissions');
+  certificateExceptionsStore = createProfileStore(activeProfileId, 'certificateExceptions');
+  passwordBreachCacheStore = createProfileStore(activeProfileId, 'passwordBreachCache');
+  return activeProfileId;
+}
+
+function getProfileSnapshot() {
+  const profiles = [...getPersistedProfiles(), getGuestProfile()];
+  const activeProfile = profiles.find(profile => profile.id === activeProfileId) || profiles[0];
+  return {
+    activeProfileId,
+    activeProfile,
+    profiles
+  };
+}
+
+function initializeActiveProfile() {
+  const profiles = getPersistedProfiles();
+  const storedId = profilesStore.get('activeProfileId');
+  const validStored = profiles.some(profile => profile.id === storedId) ? storedId : DEFAULT_PROFILE_ID;
+  activeProfileId = validStored;
+  profilesStore.set('activeProfileId', validStored);
+  loadProfileStores(validStored);
+}
+
+initializeActiveProfile();
 
 const MAIN_TEXT = {
   tr: {
@@ -445,8 +627,8 @@ const spaceSessions = new Map();
 const configuredProfilePartitions = new Set();
 let pendingPermissionRequests = {};
 let permissionRequestId = 0;
-const permissionsStore = new Store('permissions', { permissions: {} });
 const siteBlockedCounts = new Map();
+const guestSessionToken = crypto.randomBytes(6).toString('hex');
 
 function normalizeHostname(value) {
   try {
@@ -470,7 +652,15 @@ function isCookieForHost(cookie, hostname) {
   return cookieDomain === host || host.endsWith(`.${cookieDomain}`) || cookieDomain.endsWith(`.${host}`);
 }
 
-function getSpacePartition(spaceName) {
+function getProfilePartitionBase(profileId = activeProfileId) {
+  if (profileId === GUEST_PROFILE_ID) return `oslo-guest-${guestSessionToken}`;
+  if (profileId === DEFAULT_PROFILE_ID) return 'oslo-space';
+  const slug = slugifyProfileId(profileId);
+  const hash = crypto.createHash('sha1').update(profileId).digest('hex').slice(0, 8);
+  return `oslo-profile-${slug}-${hash}`;
+}
+
+function getSpacePartition(spaceName, profileId = activeProfileId) {
   const normalized = String(spaceName || 'Genel').trim() || 'Genel';
   const slug = normalized
     .normalize('NFKD')
@@ -480,7 +670,8 @@ function getSpacePartition(spaceName) {
     .replace(/^-+|-+$/g, '')
     .slice(0, 42);
   const hash = crypto.createHash('sha1').update(normalized).digest('hex').slice(0, 8);
-  return `persist:oslo-space-${slug || 'genel'}-${hash}`;
+  const partitionName = `${getProfilePartitionBase(profileId)}-${slug || 'genel'}-${hash}`;
+  return profileId === GUEST_PROFILE_ID ? partitionName : `persist:${partitionName}`;
 }
 
 function cleanSessionUserAgent(sessionInstance) {
@@ -578,12 +769,12 @@ function configureProfileSession(sessionInstance, label, isIncognito = false) {
   return sessionInstance;
 }
 
-function getSessionForSpace(spaceName, isIncognito = false) {
+function getSessionForSpace(spaceName, isIncognito = false, profileId = activeProfileId) {
   if (isIncognito) return incognitoSession || session.fromPartition('incognito');
-  const partition = getSpacePartition(spaceName);
+  const partition = getSpacePartition(spaceName, profileId);
   if (!spaceSessions.has(partition)) {
     const spaceSession = session.fromPartition(partition);
-    configureProfileSession(spaceSession, `space:${spaceName || 'Genel'}`, false);
+    configureProfileSession(spaceSession, `profile:${profileId}:space:${spaceName || 'Genel'}`, profileId === GUEST_PROFILE_ID);
     spaceSessions.set(partition, spaceSession);
   }
   return spaceSessions.get(partition);
@@ -1023,7 +1214,7 @@ function replaceViewForNavigation(tab, view, isSplitSide, targetUrl, cleanGoogle
     leaveHtmlFullscreenForWindow(win);
   }
 
-  const viewSession = previousView.webContents?.session || getSessionForSpace(tab.space, tab.isIncognito);
+  const viewSession = previousView.webContents?.session || getSessionForSpace(tab.space, tab.isIncognito, tab.profileId || activeProfileId);
   const nextView = createManagedView(viewSession, { cleanGoogleAuth });
 
   if (!isSplitSide && tab.zoomFactor && tab.zoomFactor !== 1.0) {
@@ -1482,7 +1673,8 @@ function createTab(url, isIncognito = false, space = 'Genel', winId = null, tabI
   const defaultZoom = parseFloat(settingsStore.get('defaultPageZoom')) || 1.0;
   const initialZoom = typeof zoomFactor === 'number' ? zoomFactor : defaultZoom;
 
-  const viewSession = getSessionForSpace(space, isIncognito);
+  const profileId = activeProfileId;
+  const viewSession = getSessionForSpace(space, isIncognito, profileId);
   const formattedInitialUrl = url && url !== 'oslo://newtab' ? formatUrl(url) : '';
   const usesCleanGoogleAuthView = shouldUseCleanGoogleAuthView(formattedInitialUrl);
 
@@ -1502,6 +1694,7 @@ function createTab(url, isIncognito = false, space = 'Genel', winId = null, tabI
     title: defaultTitle,
     isLoading: false,
     isIncognito: isIncognito,
+    profileId,
     space: space,
     windowId: winId,
     lastActive: Date.now(),
@@ -1551,6 +1744,7 @@ function createAndNotifyTab(url, isIncognito = false, space = 'Genel', winId = n
       title: tab.title,
       isLoading: tab.isLoading,
       isIncognito: tab.isIncognito,
+      profileId: tab.profileId || activeProfileId,
       space: tab.space,
       isPinned: tab.isPinned,
       zoomFactor: tab.zoomFactor,
@@ -1706,7 +1900,7 @@ function wakeTab(tabId) {
   const tab = tabs[tabId];
   if (!tab || !tab.isSleeping) return;
 
-  const viewSession = getSessionForSpace(tab.space, tab.isIncognito);
+  const viewSession = getSessionForSpace(tab.space, tab.isIncognito, tab.profileId || activeProfileId);
   const formattedUrl = tab.url && tab.url !== 'oslo://newtab' && !isLocalNewTabUrl(tab.url) ? formatUrl(tab.url) : '';
   const usesCleanGoogleAuthView = shouldUseCleanGoogleAuthView(formattedUrl);
 
@@ -2339,7 +2533,9 @@ function saveSession() {
     sessionStore.set('tabOrders', {});
     return;
   }
-  const sessionTabs = Object.values(tabs).filter(tab => !tab.isIncognito).map(tab => {
+  const sessionTabs = Object.values(tabs)
+    .filter(tab => !tab.isIncognito && (tab.profileId || DEFAULT_PROFILE_ID) === activeProfileId)
+    .map(tab => {
     let url = tab.url;
     if (tab.view && !tab.isSleeping && tab.view.webContents) {
       try {
@@ -2349,11 +2545,12 @@ function saveSession() {
     if (isReaderPageUrl(url) && tab.readerOriginalUrl) {
       url = tab.readerOriginalUrl;
     }
-    return {
-      id: tab.id,
-      url: url,
-      space: tab.space,
-      isPinned: !!tab.isPinned,
+      return {
+        id: tab.id,
+        url: url,
+        profileId: tab.profileId || activeProfileId,
+        space: tab.space,
+        isPinned: !!tab.isPinned,
       title: tab.title,
       lastActive: tab.lastActive,
       isSleeping: !!tab.isSleeping,
@@ -2361,8 +2558,14 @@ function saveSession() {
       zoomFactor: tab.zoomFactor || 1.0
     };
   });
+  const savedTabIds = new Set(sessionTabs.map(tab => tab.id));
+  const filteredTabOrders = Object.fromEntries(
+    Object.entries(tabOrders)
+      .map(([winId, order]) => [winId, (order || []).filter(tabId => savedTabIds.has(tabId))])
+      .filter(([, order]) => order.length > 0)
+  );
   sessionStore.set('tabs', sessionTabs);
-  sessionStore.set('tabOrders', tabOrders);
+  sessionStore.set('tabOrders', filteredTabOrders);
 }
 
 const DOWNLOAD_RISK_EXTENSIONS = new Set(['exe', 'msi', 'bat', 'cmd', 'ps1', 'vbs', 'js', 'jar', 'scr', 'com', 'reg']);
@@ -2667,8 +2870,171 @@ function setupDownloadListener(sessionInstance, isIncognito = false) {
         });
       }
     });
+    });
+}
+
+function buildProfilePayload() {
+  return {
+    ...getProfileSnapshot(),
+    settings: settingsStore.data,
+    bookmarks: bookmarksStore.get('bookmarks') || [],
+    spaces: spacesStore.get('spaces') || ['Genel'],
+    downloads: downloadsStore.get('downloads') || []
+  };
+}
+
+function closeAllTabsForProfileSwitch() {
+  Object.keys(tabs).forEach(tabId => {
+    try {
+      destroyTab(tabId);
+    } catch (error) {
+      console.error('[Profiles] Failed to destroy tab during profile switch:', error);
+    }
+  });
+  tabs = {};
+  activeTabs = {};
+  tabOrders = {};
+  htmlFullscreenByWindow.clear();
+}
+
+function applyActiveProfileRuntimeSettings() {
+  adblock.setAdBlockEnabled(settingsStore.get('adblockEnabled'));
+  adblock.setHttpsOnlyEnabled(settingsStore.get('httpsOnlyEnabled') || false);
+  syncNetworkPrivacyOptions();
+  applyBackgroundTabThrottling();
+}
+
+async function switchActiveProfile(profileId) {
+  const targetId = profileId === GUEST_PROFILE_ID ? GUEST_PROFILE_ID : String(profileId || DEFAULT_PROFILE_ID);
+  const validProfile = targetId === GUEST_PROFILE_ID || getPersistedProfiles().some(profile => profile.id === targetId);
+  if (!validProfile) throw new Error('Profile not found.');
+
+  if (targetId === activeProfileId) {
+    return buildProfilePayload();
+  }
+
+  saveSession();
+  closeAllTabsForProfileSwitch();
+  loadProfileStores(targetId);
+  if (targetId !== GUEST_PROFILE_ID) {
+    profilesStore.set('activeProfileId', targetId);
+  }
+  applyActiveProfileRuntimeSettings();
+
+  const payload = buildProfilePayload();
+  windows.forEach(win => sendToUI(win, 'ui-profile-switched', payload));
+  return payload;
+}
+
+function createUniqueProfileId(name) {
+  const existingIds = new Set(getPersistedProfiles().map(profile => profile.id));
+  const base = slugifyProfileId(name);
+  let id = base;
+  let index = 2;
+  while (existingIds.has(id) || id === GUEST_PROFILE_ID) {
+    id = `${base}-${index}`;
+    index += 1;
+  }
+  return id;
+}
+
+function deleteProfileDataFiles(profileId) {
+  if (!profileId || profileId === DEFAULT_PROFILE_ID || profileId === GUEST_PROFILE_ID) return;
+  const fs = require('fs');
+  const userDataPath = app.getPath('userData');
+  Object.keys(PROFILE_STORE_DEFAULTS).forEach(storeName => {
+    const filePath = path.join(userDataPath, `${getProfileStoreFileName(profileId, storeName)}.json`);
+    if (!filePath.startsWith(userDataPath)) return;
+    try {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch (error) {
+      console.error('[Profiles] Failed to remove profile data file:', filePath, error);
+    }
   });
 }
+
+ipcMain.handle('profiles-get', (event) => {
+  assertMainUiSender(event);
+  return buildProfilePayload();
+});
+
+ipcMain.handle('profiles-create', async (event, profileInput = {}) => {
+  assertMainUiSender(event);
+  const name = String(profileInput.name || '').trim().slice(0, 48);
+  if (!name) throw new Error('Profile name is required.');
+
+  const now = Date.now();
+  const profile = normalizeProfile({
+    id: createUniqueProfileId(name),
+    name,
+    avatar: profileInput.avatar,
+    color: profileInput.color,
+    createdAt: now,
+    updatedAt: now
+  }, { color: '#00ddff' });
+
+  const profiles = getPersistedProfiles();
+  profiles.push(profile);
+  profilesStore.set('profiles', profiles);
+  saveSession();
+  loadProfileStores(profile.id);
+  profilesStore.set('activeProfileId', profile.id);
+  closeAllTabsForProfileSwitch();
+  applyActiveProfileRuntimeSettings();
+
+  const payload = buildProfilePayload();
+  windows.forEach(win => sendToUI(win, 'ui-profile-switched', payload));
+  return payload;
+});
+
+ipcMain.handle('profiles-update', async (event, profileInput = {}) => {
+  assertMainUiSender(event);
+  const id = String(profileInput.id || '');
+  if (!id || id === GUEST_PROFILE_ID) throw new Error('Profile cannot be edited.');
+
+  const profiles = getPersistedProfiles();
+  const index = profiles.findIndex(profile => profile.id === id);
+  if (index < 0) throw new Error('Profile not found.');
+
+  const current = profiles[index];
+  profiles[index] = normalizeProfile({
+    ...current,
+    name: profileInput.name || current.name,
+    avatar: profileInput.avatar || current.avatar,
+    color: profileInput.color || current.color,
+    updatedAt: Date.now()
+  }, current);
+  profilesStore.set('profiles', profiles);
+
+  const payload = buildProfilePayload();
+  windows.forEach(win => sendToUI(win, 'ui-profiles-updated', payload));
+  return payload;
+});
+
+ipcMain.handle('profiles-delete', async (event, profileId) => {
+  assertMainUiSender(event);
+  const id = String(profileId || '');
+  if (!id || id === DEFAULT_PROFILE_ID || id === GUEST_PROFILE_ID) {
+    throw new Error('This profile cannot be deleted.');
+  }
+
+  const profiles = getPersistedProfiles().filter(profile => profile.id !== id);
+  profilesStore.set('profiles', profiles);
+  deleteProfileDataFiles(id);
+
+  if (activeProfileId === id) {
+    await switchActiveProfile(DEFAULT_PROFILE_ID);
+  }
+
+  const payload = buildProfilePayload();
+  windows.forEach(win => sendToUI(win, 'ui-profiles-updated', payload));
+  return payload;
+});
+
+ipcMain.handle('profiles-switch', async (event, profileId) => {
+  assertMainUiSender(event);
+  return switchActiveProfile(profileId);
+});
 
 // IPC Listeners
 ipcMain.on('tab-create', (event, data) => {
@@ -2800,7 +3166,7 @@ ipcMain.on('tab-update-space', (event, { tabId, space }) => {
 
       const formattedCurrentUrl = currentUrl && !isLocalNewTabUrl(currentUrl) ? formatUrl(currentUrl) : '';
       const usesCleanGoogleAuthView = shouldUseCleanGoogleAuthView(formattedCurrentUrl);
-      const view = createManagedView(getSessionForSpace(space, false), { cleanGoogleAuth: usesCleanGoogleAuthView });
+      const view = createManagedView(getSessionForSpace(space, false, tab.profileId || activeProfileId), { cleanGoogleAuth: usesCleanGoogleAuthView });
 
       tab.view = view;
       tab.usesCleanGoogleAuthView = usesCleanGoogleAuthView;
@@ -2951,6 +3317,7 @@ ipcMain.on('tab-toggle-split', (event, tabId) => {
         title: newTab.title,
         isLoading: newTab.isLoading,
         isIncognito: newTab.isIncognito,
+        profileId: newTab.profileId || activeProfileId,
         space: newTab.space,
         isPinned: newTab.isPinned,
         zoomFactor: newTab.zoomFactor,
@@ -2964,7 +3331,7 @@ ipcMain.on('tab-toggle-split', (event, tabId) => {
     }
   } else {
     // Turn split screen ON
-    const viewSession = getSessionForSpace(tab.space, tab.isIncognito);
+    const viewSession = getSessionForSpace(tab.space, tab.isIncognito, tab.profileId || activeProfileId);
     const splitView = createManagedView(viewSession);
 
     tab.splitView = splitView;

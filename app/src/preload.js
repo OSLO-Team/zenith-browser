@@ -1111,6 +1111,20 @@ function isChecksum(value, algorithm) {
   return isSha256(value);
 }
 
+function isProfileId(value) {
+  return !!asString(value, 80) && /^[a-z0-9-]+$/i.test(value);
+}
+
+function isProfileInput(value, requireId = false) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (requireId && !isProfileId(value.id)) return false;
+  if (value.id !== undefined && !isProfileId(value.id)) return false;
+  if (value.name !== undefined && !asString(value.name, 48)) return false;
+  if (value.avatar !== undefined && !asString(value.avatar, 4)) return false;
+  if (value.color !== undefined && !/^#[0-9a-f]{6}$/i.test(String(value.color))) return false;
+  return true;
+}
+
 function safeSend(channel, validator, payload) {
   if (!validator || validator(payload)) {
     ipcRenderer.send(channel, payload);
@@ -1165,6 +1179,23 @@ const osloApi = {
     return Promise.reject(new Error('Invalid tab id.'));
   },
   getReaderArticle: (articleId) => safeInvoke('reader-article-get', (value) => !!asString(value, 128), articleId),
+
+  // Profiles
+  getProfiles: () => ipcRenderer.invoke('profiles-get'),
+  createProfile: (profile) => safeInvoke('profiles-create', (value) => isProfileInput(value), profile),
+  updateProfile: (profile) => safeInvoke('profiles-update', (value) => isProfileInput(value, true), profile),
+  deleteProfile: (profileId) => safeInvoke('profiles-delete', isProfileId, profileId),
+  switchProfile: (profileId) => safeInvoke('profiles-switch', isProfileId, profileId),
+  onProfileSwitched: (callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('ui-profile-switched', listener);
+    return () => ipcRenderer.removeListener('ui-profile-switched', listener);
+  },
+  onProfilesUpdated: (callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('ui-profiles-updated', listener);
+    return () => ipcRenderer.removeListener('ui-profiles-updated', listener);
+  },
 
   // Unified Settings API
   getAllSettings: () => ipcRenderer.invoke('settings-get-all'),

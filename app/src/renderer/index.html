@@ -78,6 +78,17 @@
 
       <!-- Sidebar Footer Action Buttons -->
       <div class="sidebar-footer">
+        <div class="profile-switcher">
+          <button id="profile-selector-btn" class="profile-selector-btn" title="Profil" data-i18n-title="profile">
+            <span id="profile-selector-avatar" class="profile-avatar">K</span>
+            <span id="profile-selector-name" class="profile-selector-name">Kişisel</span>
+            <svg viewBox="0 0 24 24" width="16" height="16" class="profile-selector-chevron">
+              <path d="M7 10l5 5 5-5H7z" fill="currentColor" />
+            </svg>
+          </button>
+          <div id="profile-menu" class="profile-menu"></div>
+        </div>
+
         <button id="incognito-btn" class="sidebar-btn" title="Yeni Gizli Sekme">
           <svg viewBox="0 0 24 24" width="20" height="20">
             <path
@@ -449,7 +460,7 @@
             </button>
           </div>
           <div class="settings-nav-footer">
-            <span class="settings-nav-version">OSLO v<span id="about-version-display">1.0.0-beta.3</span></span>
+            <span class="settings-nav-version">OSLO v<span id="about-version-display">1.0.0-beta.4</span></span>
           </div>
         </nav>
 
@@ -1357,7 +1368,7 @@
                 <img src="../../assets/logo.svg" width="48" height="48" alt="OSLO" class="settings-logo-spin">
                 <div class="settings-about-info">
                   <span class="settings-about-name">OSLO Browser</span>
-                  <span class="settings-about-ver">v<span id="about-version-display-main">1.0.0-beta.3</span></span>
+                  <span class="settings-about-ver">v<span id="about-version-display-main">1.0.0-beta.4</span></span>
                 </div>
               </div>
               <div id="update-status-message" class="settings-update-msg" style="display: none;"></div>
@@ -1711,7 +1722,7 @@
         <div class="update-version-flow">
           <div class="version-chip current">
             <span class="version-label" data-i18n="current-version-label">Mevcut</span>
-            <span class="version-number" id="update-current-version">v1.0.0-beta.3</span>
+            <span class="version-number" id="update-current-version">v1.0.0-beta.4</span>
           </div>
           <div class="version-arrow">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
@@ -1720,7 +1731,7 @@
           </div>
           <div class="version-chip latest">
             <span class="version-label" data-i18n="latest-version-label">Yeni</span>
-            <span class="version-number" id="update-modal-version">v1.0.0-beta.3</span>
+            <span class="version-number" id="update-modal-version">v1.0.0-beta.4</span>
           </div>
         </div>
 
@@ -1952,6 +1963,41 @@
       <div class="modal-footer">
         <button id="btn-close-password-audit-modal" class="modal-btn secondary-btn" style="width: 100%;"
           data-i18n="modal-close">Kapat</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Profile Manager Modal -->
+  <div id="profile-manager-modal" class="modal-overlay">
+    <div class="modal-card profile-manager-card">
+      <div class="modal-header">
+        <h3 data-i18n="profile-manager-title">Profilleri Yönet</h3>
+        <button id="close-profile-manager-modal" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body profile-manager-body">
+        <div id="profile-manager-list" class="profile-manager-list"></div>
+        <div class="profile-form">
+          <input type="hidden" id="profile-edit-id">
+          <div class="settings-item">
+            <label for="profile-name-input" data-i18n="profile-name">Profil adı</label>
+            <input type="text" id="profile-name-input" class="profile-input" data-i18n-placeholder="profile-name-placeholder" placeholder="Profil adı">
+          </div>
+          <div class="profile-form-row">
+            <div class="settings-item">
+              <label for="profile-avatar-input" data-i18n="profile-avatar">Avatar</label>
+              <input type="text" id="profile-avatar-input" class="profile-input profile-avatar-input" maxlength="2" placeholder="K">
+            </div>
+            <div class="settings-item">
+              <label for="profile-color-input" data-i18n="profile-color">Renk</label>
+              <input type="color" id="profile-color-input" class="profile-color-input" value="#00ddff">
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer profile-manager-footer">
+        <button id="profile-delete-btn" class="modal-btn danger-btn" data-i18n="profile-delete">Sil</button>
+        <button id="profile-new-btn" class="modal-btn secondary-btn" data-i18n="profile-new">Yeni</button>
+        <button id="profile-save-btn" class="modal-btn primary-btn" data-i18n="modal-save">Kaydet</button>
       </div>
     </div>
   </div>
