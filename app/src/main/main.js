@@ -323,7 +323,7 @@ async function checkPasswordBreach(password) {
   if (cache[sha1]) return cache[sha1];
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
+  const timeout = setTimeout(() => controller.abort(), 4500);
   try {
     const response = await net.fetch(`https://api.pwnedpasswords.com/range/${prefix}`, {
       headers: {
@@ -346,6 +346,21 @@ async function checkPasswordBreach(password) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function mapWithConcurrency(items, limit, iteratee) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, limit), items.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await iteratee(items[currentIndex], currentIndex);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 // DNS-over-HTTPS Setup
@@ -2926,6 +2941,74 @@ ipcMain.handle('active-tab-capture-preview', async (event) => {
   }
 });
 
+function sanitizeTopbarAutocompletePayload(payload) {
+  const suggestions = Array.isArray(payload?.suggestions) ? payload.suggestions.slice(0, 12) : [];
+  const position = payload?.position || {};
+  return {
+    selectedIndex: Number.isInteger(payload?.selectedIndex) ? payload.selectedIndex : -1,
+    position: {
+      left: Math.max(0, Math.round(Number(position.left) || 0)),
+      top: Math.max(0, Math.round(Number(position.top) || 0)),
+      width: Math.max(180, Math.round(Number(position.width) || 0)),
+      maxHeight: Math.max(96, Math.round(Number(position.maxHeight) || 260))
+    },
+    suggestions: suggestions.map(item => ({
+      title: String(item?.title || '').slice(0, 256),
+      url: String(item?.url || '').slice(0, 1024),
+      icon: String(item?.icon || '').slice(0, 4000),
+      type: String(item?.type || '').slice(0, 40)
+    }))
+  };
+}
+
+function getNewtabForUiEvent(event, tabId, { requireActive = true } = {}) {
+  const win = assertMainUiSender(event);
+  const activeTabId = activeTabs[win.id];
+  const tab = tabs[tabId];
+  if (!tab || tab.windowId !== win.id || (requireActive && tab.id !== activeTabId) || !tab.view?.webContents || tab.view.webContents.isDestroyed()) {
+    return null;
+  }
+
+  try {
+    const url = tab.view.webContents.getURL().replace(/\\/g, '/').toLowerCase();
+    if (!url.startsWith('file:') || !url.endsWith('/newtab/newtab.html')) return null;
+  } catch (error) {
+    return null;
+  }
+
+  return tab;
+}
+
+ipcMain.on('newtab-topbar-autocomplete-show', (event, payload) => {
+  const tab = getNewtabForUiEvent(event, payload?.tabId, { requireActive: true });
+  if (!tab) return;
+  tab.view.webContents.send('newtab-topbar-autocomplete-show', sanitizeTopbarAutocompletePayload(payload));
+});
+
+ipcMain.on('newtab-topbar-autocomplete-hide', (event, tabId) => {
+  const tab = getNewtabForUiEvent(event, tabId, { requireActive: false });
+  if (!tab) return;
+  tab.view.webContents.send('newtab-topbar-autocomplete-hide');
+});
+
+ipcMain.on('newtab-topbar-autocomplete-activate', (event, index) => {
+  if (!isLocalNewTabSender(event)) return;
+  const tab = getSenderTab(event);
+  const win = tab?.windowId ? BrowserWindow.fromId(tab.windowId) : null;
+  if (!win) return;
+  sendToUI(win, 'ui-newtab-topbar-autocomplete-activate', {
+    index: Number.isInteger(index) ? index : -1
+  });
+});
+
+ipcMain.on('newtab-topbar-autocomplete-close', (event) => {
+  if (!isLocalNewTabSender(event)) return;
+  const tab = getSenderTab(event);
+  const win = tab?.windowId ? BrowserWindow.fromId(tab.windowId) : null;
+  if (!win) return;
+  sendToUI(win, 'ui-newtab-topbar-autocomplete-close');
+});
+
 ipcMain.handle('reader-mode-open', async (event, tabId) => {
   const win = assertMainUiSender(event);
   const tab = tabs[tabId];
@@ -4247,22 +4330,37 @@ ipcMain.handle('passwords-audit', async (event) => {
   let breachedCount = 0;
   let leakChecksCompleted = 0;
   let leakChecksFailed = 0;
-  let breachServiceAvailable = true;
+  let totalRiskPenalty = 0;
+  const uniquePasswords = [...new Set(list.map(item => String(item.password || '')).filter(Boolean))];
+  const breachResults = new Map();
+  const breachChecks = await mapWithConcurrency(uniquePasswords, 4, async (password) => {
+    const result = await checkPasswordBreach(password);
+    return [password, result];
+  });
+  breachChecks.forEach(([password, result]) => {
+    breachResults.set(password, result);
+  });
 
   for (const item of list) {
     const password = String(item.password || '');
     const isWeak = isWeakPasswordValue(password);
     const reuseGroup = passwordGroups.get(password) || [];
     const isReused = !!password && reuseGroup.length > 1;
-    const breach = breachServiceAvailable
-      ? await checkPasswordBreach(password)
-      : { breached: false, count: 0, checked: false, error: 'breach_service_unavailable' };
-    if (breach.error) breachServiceAvailable = false;
+    const breach = password
+      ? (breachResults.get(password) || { breached: false, count: 0, checked: false, error: 'breach_check_missing' })
+      : { breached: false, count: 0, checked: false };
     const isBreached = !!breach.breached;
+    const strengthScore = scorePasswordStrength(password);
+    let riskPenalty = 0;
 
     if (isWeak) weakCount += 1;
     if (isReused) reusedCount += 1;
     if (isBreached) breachedCount += 1;
+    if (isWeak) riskPenalty += 22;
+    if (isReused) riskPenalty += 18;
+    if (isBreached) riskPenalty += 45;
+    if (strengthScore >= 6 && riskPenalty === 0) riskPenalty = 0;
+    totalRiskPenalty += Math.min(90, riskPenalty);
     if (breach.checked) leakChecksCompleted += 1;
     else leakChecksFailed += 1;
 
@@ -4275,11 +4373,34 @@ ipcMain.handle('passwords-audit', async (event) => {
         isReused,
         isBreached,
         breachCount: breach.count || 0,
-        strengthScore: scorePasswordStrength(password),
+        strengthScore,
         reuseCount: reuseGroup.length
       });
     }
   }
+
+  const securityScore = list.length > 0
+    ? Math.max(0, Math.min(100, Math.round(100 - (totalRiskPenalty / list.length))))
+    : 0;
+  const recommendations = issues
+    .map(issue => ({
+      id: issue.id,
+      origin: issue.origin,
+      username: issue.username,
+      reasons: [
+        issue.isBreached ? 'breached' : '',
+        issue.isWeak ? 'weak' : '',
+        issue.isReused ? 'reused' : ''
+      ].filter(Boolean),
+      priority: issue.isBreached ? 3 : (issue.isWeak && issue.isReused ? 2 : 1),
+      breachCount: issue.breachCount || 0,
+      reuseCount: issue.reuseCount || 0
+    }))
+    .sort((a, b) => {
+      if (b.priority !== a.priority) return b.priority - a.priority;
+      if (b.breachCount !== a.breachCount) return b.breachCount - a.breachCount;
+      return String(a.origin || '').localeCompare(String(b.origin || ''), undefined, { sensitivity: 'base' });
+    });
 
   return {
     total: list.length,
@@ -4288,6 +4409,8 @@ ipcMain.handle('passwords-audit', async (event) => {
     breached: breachedCount,
     leakChecksCompleted,
     leakChecksFailed,
+    securityScore,
+    recommendations,
     issues
   };
 });

@@ -618,12 +618,14 @@ function randomIndex(max) {
   return value[0] % max;
 }
 
-const TASK_MANAGER_AUTO_REFRESH_SECONDS = 10;
+const TASK_MANAGER_REALTIME_REFRESH_MS = 1000;
+const TASK_MANAGER_BACKGROUND_REFRESH_MS = 15000;
 const TASK_MANAGER_HIGH_MEMORY_MB = 750;
 const TASK_MANAGER_HIGH_CPU_PERCENT = 15;
-let taskManagerAutoRefreshTimer = null;
-let taskManagerNextRefreshAt = Date.now() + TASK_MANAGER_AUTO_REFRESH_SECONDS * 1000;
+let taskManagerRefreshTimer = null;
 let taskManagerRenderInFlight = false;
+let taskManagerWindowFocused = true;
+let taskManagerLifecycleListenersBound = false;
 let taskManagerFilter = 'all';
 let taskManagerSort = 'resource';
 let taskManagerSearch = '';
@@ -640,31 +642,98 @@ function isTaskManagerPanelActive() {
   return !!(overlay?.classList.contains('open') && panel?.classList.contains('active'));
 }
 
-function updateTaskManagerCountdown() {
-  const countdown = document.getElementById('task-manager-countdown');
-  if (!countdown) return;
-  if (!isTaskManagerPanelActive()) {
-    countdown.textContent = `${TASK_MANAGER_AUTO_REFRESH_SECONDS}s`;
-    return;
+function getTaskManagerRefreshMode() {
+  if (!isTaskManagerPanelActive()) return 'stopped';
+  if (document.hidden || !taskManagerWindowFocused) return 'slow';
+  return 'live';
+}
+
+function updateTaskManagerRefreshStatus() {
+  const status = document.getElementById('task-manager-refresh-state');
+  if (!status) return;
+  const mode = getTaskManagerRefreshMode();
+  status.dataset.mode = mode;
+  if (mode === 'live') {
+    status.textContent = getText('task-manager-refresh-live', 'Canlı');
+  } else if (mode === 'slow') {
+    status.textContent = getText('task-manager-refresh-slow', 'Yavaş');
+  } else {
+    status.textContent = getText('task-manager-refresh-paused', 'Durakladı');
   }
-  const seconds = Math.max(0, Math.ceil((taskManagerNextRefreshAt - Date.now()) / 1000));
-  countdown.textContent = `${seconds}s`;
+}
+
+function clearTaskManagerRefreshTimer() {
+  if (taskManagerRefreshTimer) {
+    clearTimeout(taskManagerRefreshTimer);
+    taskManagerRefreshTimer = null;
+  }
+}
+
+function stopTaskManagerLiveRefresh() {
+  clearTaskManagerRefreshTimer();
+  updateTaskManagerRefreshStatus();
 }
 
 function scheduleNextTaskManagerRefresh() {
-  taskManagerNextRefreshAt = Date.now() + TASK_MANAGER_AUTO_REFRESH_SECONDS * 1000;
-  updateTaskManagerCountdown();
+  clearTaskManagerRefreshTimer();
+  const mode = getTaskManagerRefreshMode();
+  updateTaskManagerRefreshStatus();
+  if (mode === 'stopped') return;
+  const delay = mode === 'live' ? TASK_MANAGER_REALTIME_REFRESH_MS : TASK_MANAGER_BACKGROUND_REFRESH_MS;
+  taskManagerRefreshTimer = setTimeout(() => {
+    taskManagerRefreshTimer = null;
+    if (!isTaskManagerPanelActive()) {
+      stopTaskManagerLiveRefresh();
+      return;
+    }
+    renderTaskManagerSection();
+  }, delay);
 }
 
-function ensureTaskManagerAutoRefresh() {
-  if (taskManagerAutoRefreshTimer) return;
-  taskManagerAutoRefreshTimer = setInterval(() => {
-    updateTaskManagerCountdown();
-    if (!isTaskManagerPanelActive() || taskManagerRenderInFlight) return;
-    if (Date.now() >= taskManagerNextRefreshAt) {
-      renderTaskManagerSection();
-    }
-  }, 1000);
+function ensureTaskManagerLiveRefresh({ immediate = false } = {}) {
+  updateTaskManagerRefreshStatus();
+  if (!isTaskManagerPanelActive()) {
+    stopTaskManagerLiveRefresh();
+    return;
+  }
+  if (immediate) {
+    renderTaskManagerSection();
+    return;
+  }
+  if (!taskManagerRefreshTimer && !taskManagerRenderInFlight) {
+    scheduleNextTaskManagerRefresh();
+  }
+}
+
+function syncTaskManagerRefreshLifecycle({ immediate = false } = {}) {
+  if (!isTaskManagerPanelActive()) {
+    stopTaskManagerLiveRefresh();
+    return;
+  }
+  if (immediate && !document.hidden && taskManagerWindowFocused) {
+    renderTaskManagerSection();
+    return;
+  }
+  scheduleNextTaskManagerRefresh();
+}
+
+function bindTaskManagerLifecycleListeners() {
+  if (taskManagerLifecycleListenersBound) return;
+  taskManagerLifecycleListenersBound = true;
+
+  document.addEventListener('visibilitychange', () => {
+    syncTaskManagerRefreshLifecycle({ immediate: !document.hidden });
+  });
+
+  window.addEventListener('focus', () => {
+    taskManagerWindowFocused = true;
+    syncTaskManagerRefreshLifecycle({ immediate: true });
+  });
+
+  window.addEventListener('blur', () => {
+    taskManagerWindowFocused = false;
+    syncTaskManagerRefreshLifecycle();
+  });
 }
 
 function formatTaskManagerMemory(value) {
@@ -860,7 +929,7 @@ async function renderTaskManagerSection() {
   const list = document.getElementById('task-manager-list');
   if (!list || typeof window.oslo.getTaskManagerTabs !== 'function') return;
   if (!isTaskManagerPanelActive()) {
-    updateTaskManagerCountdown();
+    stopTaskManagerLiveRefresh();
     return;
   }
   if (taskManagerRenderInFlight) return;
@@ -1026,6 +1095,271 @@ function formatDateTime(timestamp) {
   }
 }
 
+let latestPasswordHealthAudit = null;
+let passwordHealthRequestToken = 0;
+let passwordHealthScanControlsBound = false;
+
+function getCredentialHost(originValue) {
+  try {
+    return new URL(originValue).hostname.replace(/^www\./, '');
+  } catch (error) {
+    return String(originValue || '');
+  }
+}
+
+function getPasswordHealthLevel(score, total) {
+  if (!total) return 'empty';
+  if (score >= 90) return 'excellent';
+  if (score >= 75) return 'good';
+  if (score >= 50) return 'warning';
+  return 'critical';
+}
+
+function getPasswordHealthStatus(level) {
+  if (level === 'excellent') return getText('password-health-status-excellent', 'Mükemmel');
+  if (level === 'good') return getText('password-health-status-good', 'İyi');
+  if (level === 'warning') return getText('password-health-status-warning', 'Dikkat gerekli');
+  if (level === 'critical') return getText('password-health-status-critical', 'Acil yenileme gerekli');
+  return getText('password-health-no-data', 'Veri yok');
+}
+
+function getPasswordHealthSummary(audit, level) {
+  const total = audit?.total || 0;
+  const weak = audit?.weak || 0;
+  const reused = audit?.reused || 0;
+  const breached = audit?.breached || 0;
+  if (!total) return getText('password-health-empty', 'Kayıtlı şifre bulunmuyor.');
+  if (level === 'excellent') return getText('password-health-summary-safe', 'Kayıtlı şifreler güçlü, benzersiz ve sızıntı listelerinde görünmüyor.');
+  if (breached > 0) {
+    return getText('password-health-summary-critical', '{count} şifre sızıntı listesinde görünüyor. Öncelik bu sitelerde olmalı.')
+      .replace('{count}', breached);
+  }
+  if (weak > 0 && reused > 0) {
+    return getText('password-health-summary-mixed', 'Zayıf ve tekrar kullanılan şifreler var. Yenilemeye en riskli sitelerden başlayın.');
+  }
+  return getText('password-health-summary-attention', 'Bazı kayıtlar yenilenmeli. Daha güçlü ve benzersiz şifreler kullanın.');
+}
+
+function getPasswordHealthReasonLabel(reason) {
+  if (reason === 'breached') return getText('password-audit-breached-label', 'Sızıntı');
+  if (reason === 'reused') return getText('password-audit-reused-label', 'Tekrar');
+  return getText('password-audit-weak-label', 'Zayıf');
+}
+
+function getPasswordHealthSuggestion(recommendation) {
+  const reasons = new Set(recommendation?.reasons || []);
+  if (reasons.has('breached')) {
+    return getText('password-health-renew-breached', 'Bu sitedeki şifreyi hemen değiştirin; sızıntı listesinde görünüyor.');
+  }
+  if (reasons.has('weak') && reasons.has('reused')) {
+    return getText('password-health-renew-weak-reused', 'Bu site için güçlü ve benzersiz yeni bir şifre oluşturun.');
+  }
+  if (reasons.has('reused')) {
+    return getText('password-health-renew-reused', 'Bu sitede başka yerde kullanılmayan benzersiz bir şifre belirleyin.');
+  }
+  return getText('password-health-renew-weak', 'Bu sitedeki şifreyi daha uzun ve karmaşık bir şifreyle değiştirin.');
+}
+
+function showPasswordCopyFeedback(button, message = getText('password-copy-toast', 'Kopyalandı!')) {
+  if (!button) return;
+  button.classList.add('copied');
+  button.setAttribute('data-copy-feedback', message);
+  clearTimeout(button.copyFeedbackTimer);
+  button.copyFeedbackTimer = setTimeout(() => {
+    button.classList.remove('copied');
+    button.removeAttribute('data-copy-feedback');
+  }, 1400);
+}
+
+async function copyPasswordFieldValue(value, button, message) {
+  const text = String(value || '');
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (error) {
+    const fallback = document.createElement('textarea');
+    fallback.value = text;
+    fallback.setAttribute('readonly', '');
+    fallback.style.position = 'fixed';
+    fallback.style.opacity = '0';
+    document.body.appendChild(fallback);
+    fallback.select();
+    document.execCommand('copy');
+    fallback.remove();
+  }
+  showPasswordCopyFeedback(button, message);
+}
+
+function getPasswordHealthSiteList(issues, predicate) {
+  const sites = [];
+  const seen = new Set();
+  issues.filter(predicate).forEach(issue => {
+    const host = getCredentialHost(issue.origin) || issue.origin || '-';
+    const key = host.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      sites.push(host);
+    }
+  });
+  if (sites.length === 0) return getText('password-health-none', 'Yok');
+  const visible = sites.slice(0, 3).join(', ');
+  if (sites.length <= 3) return visible;
+  return `${visible} ${getText('password-health-more-template', '+{count} daha').replace('{count}', sites.length - 3)}`;
+}
+
+function normalizePasswordRecommendations(audit) {
+  if (Array.isArray(audit?.recommendations)) return audit.recommendations;
+  return (audit?.issues || []).map(issue => ({
+    id: issue.id,
+    origin: issue.origin,
+    username: issue.username,
+    reasons: [
+      issue.isBreached ? 'breached' : '',
+      issue.isWeak ? 'weak' : '',
+      issue.isReused ? 'reused' : ''
+    ].filter(Boolean),
+    priority: issue.isBreached ? 3 : (issue.isWeak && issue.isReused ? 2 : 1),
+    breachCount: issue.breachCount || 0,
+    reuseCount: issue.reuseCount || 0
+  }));
+}
+
+function renderPasswordHealthPanel(audit = latestPasswordHealthAudit) {
+  const panel = document.getElementById('password-health-panel');
+  if (!panel || !audit) return;
+
+  const total = audit.total || 0;
+  const score = Number.isFinite(Number(audit.securityScore)) ? Number(audit.securityScore) : 0;
+  const level = getPasswordHealthLevel(score, total);
+  const issues = audit.issues || [];
+  const recommendations = normalizePasswordRecommendations(audit);
+
+  const ring = document.querySelector('.password-health-score-ring');
+  const scoreEl = document.getElementById('password-health-score-value');
+  const statusEl = document.getElementById('password-health-status');
+  const summaryEl = document.getElementById('password-health-summary');
+  const totalEl = document.getElementById('password-health-total');
+  const weakEl = document.getElementById('password-health-weak');
+  const reusedEl = document.getElementById('password-health-reused');
+  const breachedEl = document.getElementById('password-health-breached');
+  const weakSitesEl = document.getElementById('password-health-weak-sites');
+  const reusedSitesEl = document.getElementById('password-health-reused-sites');
+  const breachedSitesEl = document.getElementById('password-health-breached-sites');
+  const recommendationList = document.getElementById('password-health-recommendation-list');
+
+  if (ring) ring.dataset.level = level;
+  if (scoreEl) scoreEl.textContent = total ? String(score) : '--';
+  if (statusEl) statusEl.textContent = getPasswordHealthStatus(level);
+  if (summaryEl) summaryEl.textContent = getPasswordHealthSummary(audit, level);
+  if (totalEl) totalEl.textContent = String(total);
+  if (weakEl) weakEl.textContent = String(audit.weak || 0);
+  if (reusedEl) reusedEl.textContent = String(audit.reused || 0);
+  if (breachedEl) breachedEl.textContent = String(audit.breached || 0);
+  if (weakSitesEl) weakSitesEl.textContent = getPasswordHealthSiteList(issues, issue => issue.isWeak);
+  if (reusedSitesEl) reusedSitesEl.textContent = getPasswordHealthSiteList(issues, issue => issue.isReused);
+  if (breachedSitesEl) breachedSitesEl.textContent = getPasswordHealthSiteList(issues, issue => issue.isBreached);
+
+  if (!recommendationList) return;
+  if (recommendations.length === 0) {
+    recommendationList.innerHTML = `<div class="password-health-empty">${escapeHtml(
+      total
+        ? getText('password-health-no-recommendations', 'Yenileme önerisi yok.')
+        : getText('password-health-empty', 'Kayıtlı şifre bulunmuyor.')
+    )}</div>`;
+    return;
+  }
+
+  recommendationList.innerHTML = recommendations.slice(0, 8).map(recommendation => {
+    const host = getCredentialHost(recommendation.origin) || recommendation.origin || '-';
+    const username = recommendation.username || '-';
+    const reasons = (recommendation.reasons || []).map(reason => (
+      `<span class="password-health-reason ${escapeHtml(reason)}">${escapeHtml(getPasswordHealthReasonLabel(reason))}</span>`
+    )).join('');
+    return `
+      <div class="password-health-recommendation-row">
+        <div class="password-health-recommendation-info">
+          <span class="password-health-recommendation-site">${escapeHtml(host)}</span>
+          <span class="password-health-recommendation-detail">${escapeHtml(username)} · ${escapeHtml(getPasswordHealthSuggestion(recommendation))}</span>
+        </div>
+        <div class="password-health-reason-list">${reasons}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function refreshPasswordHealthPanel({ force = false } = {}) {
+  const panel = document.getElementById('password-health-panel');
+  const refreshButton = document.getElementById('settings-refresh-password-health');
+  const recommendationList = document.getElementById('password-health-recommendation-list');
+  if (!panel) return;
+  if (typeof window.oslo?.auditPasswords !== 'function') {
+    if (recommendationList) {
+      recommendationList.innerHTML = `<div class="password-health-empty">${escapeHtml(getText('password-health-error', 'Şifre sağlığı yüklenemedi.'))}</div>`;
+    }
+    return;
+  }
+  if (!force && latestPasswordHealthAudit) {
+    renderPasswordHealthPanel(latestPasswordHealthAudit);
+    return;
+  }
+
+  const token = ++passwordHealthRequestToken;
+  panel.classList.add('loading');
+  if (refreshButton) {
+    refreshButton.disabled = true;
+    refreshButton.dataset.originalText = refreshButton.textContent || '';
+    refreshButton.textContent = getText('password-health-scanning-short', 'Taranıyor...');
+  }
+  if (recommendationList) {
+    recommendationList.innerHTML = `<div class="password-health-empty">${escapeHtml(getText('password-health-scanning', 'Şifre sağlığı taranıyor...'))}</div>`;
+  }
+  try {
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    const audit = await window.oslo.auditPasswords();
+    if (token !== passwordHealthRequestToken) return;
+    latestPasswordHealthAudit = audit;
+    renderPasswordHealthPanel(audit);
+  } catch (error) {
+    console.error('Password health panel failed:', error);
+    if (recommendationList) {
+      recommendationList.innerHTML = `<div class="password-health-empty">${escapeHtml(getText('password-health-error', 'Şifre sağlığı yüklenemedi.'))}</div>`;
+    }
+  } finally {
+    if (token === passwordHealthRequestToken && refreshButton) {
+      refreshButton.disabled = false;
+      refreshButton.textContent = refreshButton.dataset.originalText || getText('password-health-refresh', 'Tara');
+      delete refreshButton.dataset.originalText;
+    }
+    if (token === passwordHealthRequestToken) panel.classList.remove('loading');
+  }
+}
+
+function bindPasswordHealthScanControls() {
+  const refreshButton = document.getElementById('settings-refresh-password-health');
+  if (refreshButton) refreshButton.dataset.bound = 'true';
+
+  if (!passwordHealthScanControlsBound) {
+    passwordHealthScanControlsBound = true;
+    document.addEventListener('click', (event) => {
+      const target = event.target?.closest?.('#settings-refresh-password-health');
+      if (!target) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (target.disabled) return;
+      refreshPasswordHealthPanel({ force: true });
+    }, true);
+    document.addEventListener('keydown', (event) => {
+      const target = event.target?.closest?.('#settings-refresh-password-health');
+      if (!target) return;
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (target.disabled) return;
+      refreshPasswordHealthPanel({ force: true });
+    }, true);
+  }
+}
+
 async function auditSavedPasswords() {
   const modal = document.getElementById('password-audit-modal');
   if (!modal) return;
@@ -1040,6 +1374,8 @@ async function auditSavedPasswords() {
 
   try {
     const audit = await window.oslo.auditPasswords();
+    latestPasswordHealthAudit = audit;
+    renderPasswordHealthPanel(audit);
     const totalCount = audit?.total || 0;
     const weakCount = audit?.weak || 0;
     const reusedCount = audit?.reused || 0;
@@ -1295,7 +1631,7 @@ export function initSettings() {
   if (closeSettings) {
     closeSettings.addEventListener('click', () => {
       settingsOverlay?.classList.remove('open');
-      updateTaskManagerCountdown();
+      stopTaskManagerLiveRefresh();
       window.dispatchEvent(new Event('resize'));
     });
   }
@@ -1313,15 +1649,16 @@ export function initSettings() {
       item.classList.add('active');
       const target = document.getElementById(`settings-tab-${tabName}`);
       if (target) target.classList.add('active');
+      if (tabName !== 'ram') stopTaskManagerLiveRefresh();
 
       if (tabName === 'passwords') {
         renderSavedPasswords();
+        refreshPasswordHealthPanel();
       } else if (tabName === 'about') {
         loadAboutTabSystemInfo();
       } else if (tabName === 'ram') {
         initTaskManagerControls();
-        ensureTaskManagerAutoRefresh();
-        renderTaskManagerSection();
+        ensureTaskManagerLiveRefresh({ immediate: true });
       }
     });
   });
@@ -1538,9 +1875,9 @@ export function initSettings() {
   Object.entries(privacyCheckboxControls).forEach(([key, id]) => bindSettingCheckbox(id, key));
   Object.entries(privacyTextControls).forEach(([key, id]) => bindSettingText(id, key));
 
-  ensureTaskManagerAutoRefresh();
+  bindTaskManagerLifecycleListeners();
   initTaskManagerControls();
-  updateTaskManagerCountdown();
+  ensureTaskManagerLiveRefresh();
 
   const settingsDnsCheckbox = document.getElementById('settings-dns-checkbox');
   const settingsDnsProvider = document.getElementById('settings-dns-provider');
@@ -1576,6 +1913,7 @@ export function initSettings() {
 
   document.getElementById('settings-audit-passwords')?.addEventListener('click', auditSavedPasswords);
   document.getElementById('settings-audit-passwords-saved')?.addEventListener('click', auditSavedPasswords);
+  bindPasswordHealthScanControls();
   document.getElementById('saved-passwords-search')?.addEventListener('input', renderSavedPasswords);
 
   ['password-generator-length', 'password-option-uppercase', 'password-option-lowercase', 'password-option-numbers', 'password-option-symbols', 'password-option-ambiguous'].forEach(id => {
@@ -1759,6 +2097,7 @@ export function initSettings() {
           msg = msg.replace('{added}', res.added).replace('{updated}', res.updated);
           showCustomAlert(getText('saved-passwords-title', 'Kayıtlı Şifreler'), msg);
           renderSavedPasswords();
+          refreshPasswordHealthPanel({ force: true });
         } else if (res.message === 'no_credentials_found') {
           const msg = translations[state.currentLang]['passwords-import-empty'] || 'Seçilen dosyada şifre bulunamadı.';
           showCustomAlert(getText('saved-passwords-title', 'Kayıtlı Şifreler'), msg);
@@ -1817,6 +2156,7 @@ export function initSettings() {
     const passwordsTab = document.getElementById('settings-tab-passwords');
     if (passwordsTab && passwordsTab.classList.contains('active')) {
       renderSavedPasswords();
+      renderPasswordHealthPanel();
     }
   });
 
@@ -2073,7 +2413,11 @@ export function renderSavedPasswords() {
         </svg>
       `;
       copyUserBtn.addEventListener('click', async () => {
-        await navigator.clipboard.writeText(cred.username || '');
+        await copyPasswordFieldValue(
+          cred.username || '',
+          copyUserBtn,
+          getText('password-copy-username-success', 'Kullanıcı adı kopyalandı.')
+        );
       });
 
       const copyPasswordBtn = document.createElement('button');
@@ -2085,7 +2429,11 @@ export function renderSavedPasswords() {
         </svg>
       `;
       copyPasswordBtn.addEventListener('click', async () => {
-        await navigator.clipboard.writeText(cred.password || '');
+        await copyPasswordFieldValue(
+          cred.password || '',
+          copyPasswordBtn,
+          getText('password-copy-password-success', 'Şifre kopyalandı.')
+        );
       });
 
       const deleteBtn = document.createElement('button');
@@ -2104,6 +2452,7 @@ export function renderSavedPasswords() {
           if (!confirmed) return;
           window.oslo.deleteCredential(cred.id).then(() => {
             renderSavedPasswords();
+            refreshPasswordHealthPanel({ force: true });
           });
         });
       });

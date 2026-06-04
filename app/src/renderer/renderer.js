@@ -100,14 +100,30 @@ function getUiText(key, fallback) {
   return translations[state.currentLang]?.[key] || translations.tr?.[key] || fallback;
 }
 
-async function captureContentPreview() {
+function hasActiveContentPreview() {
   const contentArea = document.getElementById('content-area');
-  if (!contentArea || typeof window.oslo.captureActiveTabPreview !== 'function') return false;
+  const preview = document.getElementById('content-area-preview');
+  return !!(contentArea?.classList.contains('content-preview-active') && preview?.getAttribute('src'));
+}
 
+function clearContentPreviewNow() {
   if (contentPreviewClearTimer) {
     clearTimeout(contentPreviewClearTimer);
     contentPreviewClearTimer = null;
   }
+
+  const contentArea = document.getElementById('content-area');
+  document.getElementById('content-area-preview')?.remove();
+  contentArea?.classList.remove('content-preview-active');
+}
+
+async function captureContentPreview() {
+  const contentArea = document.getElementById('content-area');
+  if (!contentArea || typeof window.oslo.captureActiveTabPreview !== 'function') return false;
+
+  clearContentPreviewNow();
+  sendBounds();
+  await new Promise(resolve => setTimeout(resolve, 50));
 
   try {
     const dataUrl = await window.oslo.captureActiveTabPreview();
@@ -123,6 +139,14 @@ async function captureContentPreview() {
     }
 
     preview.src = dataUrl;
+    if (typeof preview.decode === 'function') {
+      await preview.decode().catch(() => {});
+    } else if (!preview.complete) {
+      await new Promise((resolve) => {
+        preview.addEventListener('load', resolve, { once: true });
+        preview.addEventListener('error', resolve, { once: true });
+      });
+    }
     contentArea.classList.add('content-preview-active');
     return true;
   } catch (err) {
@@ -147,10 +171,7 @@ function closeModalWithContentPreview(modal) {
 function clearContentPreviewSoon() {
   if (contentPreviewClearTimer) clearTimeout(contentPreviewClearTimer);
   contentPreviewClearTimer = setTimeout(() => {
-    const contentArea = document.getElementById('content-area');
-    document.getElementById('content-area-preview')?.remove();
-    contentArea?.classList.remove('content-preview-active');
-    contentPreviewClearTimer = null;
+    clearContentPreviewNow();
   }, 120);
 }
 
@@ -253,7 +274,7 @@ export function sendBounds() {
   const contentArea = document.getElementById('content-area');
   if (!contentArea) return;
 
-  // Hide native web view when modals, dropdowns, or context menus are active
+  // Hide or clip native web view when modals, dropdowns, or context menus are active.
   const isClearHistoryOpen = clearHistoryModal?.classList.contains('open');
   const isClearBrowserDataOpen = document.getElementById('clear-browser-data-modal')?.classList.contains('open');
   const isBookmarkEditOpen = bookmarkEditModal?.classList.contains('open');
@@ -276,7 +297,7 @@ export function sendBounds() {
   const autocompleteDropdown = document.getElementById('autocomplete-dropdown');
   const isAutocompleteOverPreview = autocompleteDropdown?.style.display === 'block'
     && autocompleteDropdown.dataset.overlapsContent === 'true'
-    && contentArea.classList.contains('content-preview-active');
+    && hasActiveContentPreview();
   const isHistoryOpen = document.getElementById('history-panel')?.classList.contains('open');
   const isSettingsOpen = document.getElementById('settings-overlay')?.classList.contains('open');
   const isDownloadsOpen = document.getElementById('downloads-overlay')?.classList.contains('open');
@@ -326,6 +347,7 @@ if (contentArea) {
 window.addEventListener('resize', () => {
   requestAnimationFrame(() => {
     positionAutocompleteDropdown();
+    sendNewtabTopbarAutocomplete();
     sendBounds();
   });
 });
@@ -392,6 +414,7 @@ if (navSplit) {
 // --- Address Input & Navigation ---
 if (addressInput) {
   addressInput.addEventListener('input', (e) => {
+    setAddressBarInteractionActive(true);
     showAutocompleteSuggestions(addressInput.value);
   });
 
@@ -429,10 +452,19 @@ if (addressInput) {
   });
 
   addressInput.addEventListener('focus', () => {
+    setAddressBarInteractionActive(true);
     addressInput.select();
     if (addressInput.value.trim()) {
       showAutocompleteSuggestions(addressInput.value);
     }
+  });
+
+  addressInput.addEventListener('blur', () => {
+    setTimeout(() => {
+      const dropdown = document.getElementById('autocomplete-dropdown');
+      if (dropdown && dropdown.style.display === 'block') return;
+      setAddressBarInteractionActive(false);
+    }, 80);
   });
 }
 
@@ -480,8 +512,16 @@ if (addBookmarkBtn) {
 
 
 
+function dismissAddressAutocompleteForOverlay() {
+  closeAutocompleteDropdown();
+  addressInput?.blur();
+  setAutocompleteVisibility(false);
+  setAddressBarInteractionActive(false);
+}
+
 if (historyBtn) {
   historyBtn.addEventListener('click', () => {
+    dismissAddressAutocompleteForOverlay();
     historyPanel?.classList.toggle('open');
     bookmarksPanel?.classList.remove('open');
     settingsOverlay?.classList.remove('open');
@@ -495,6 +535,7 @@ if (historyBtn) {
 
 if (downloadsBtn) {
   downloadsBtn.addEventListener('click', () => {
+    dismissAddressAutocompleteForOverlay();
     downloadsOverlay?.classList.toggle('open');
     bookmarksPanel?.classList.remove('open');
     historyPanel?.classList.remove('open');
@@ -508,6 +549,7 @@ if (downloadsBtn) {
 
 if (settingsBtn) {
   settingsBtn.addEventListener('click', () => {
+    dismissAddressAutocompleteForOverlay();
     settingsOverlay?.classList.toggle('open');
     bookmarksPanel?.classList.remove('open');
     historyPanel?.classList.remove('open');
@@ -669,6 +711,18 @@ document.getElementById('ctx-close-others')?.addEventListener('click', () => {
   }
 });
 
+window.oslo.onNewtabTopbarAutocompleteActivate?.(({ index }) => {
+  const suggestion = currentSuggestions[index];
+  if (!suggestion) return;
+  activateSuggestion(suggestion);
+  closeAutocompleteDropdown();
+  addressInput?.blur();
+});
+
+window.oslo.onNewtabTopbarAutocompleteClose?.(() => {
+  closeAutocompleteDropdown();
+});
+
 // --- Listen to Events from Main Process ---
 window.oslo.onTabCreated((tab) => {
   state.tabs[tab.id] = tab;
@@ -747,7 +801,13 @@ window.oslo.onTabClosed((tabId) => {
 });
 
 window.oslo.onTabSelected((tabId) => {
+  const previousActiveTabId = state.activeTabId;
+  if (previousActiveTabId && previousActiveTabId !== tabId && typeof window.oslo.hideNewtabTopbarAutocomplete === 'function') {
+    window.oslo.hideNewtabTopbarAutocomplete(previousActiveTabId);
+  }
+
   state.activeTabId = tabId;
+  closeAutocompleteDropdown();
   const activeTab = state.tabs[tabId];
   syncContentAreaSurface();
 
@@ -856,6 +916,7 @@ window.oslo.onDownloadProgress((data) => {
 
   // Auto open downloads overlay when a download starts
   if (data.status === 'progressing' && downloadsOverlay && !downloadsOverlay.classList.contains('open')) {
+    dismissAddressAutocompleteForOverlay();
     downloadsOverlay.classList.add('open');
     bookmarksPanel?.classList.remove('open');
     historyPanel?.classList.remove('open');
@@ -898,6 +959,7 @@ window.oslo.onHotkey((hotkeyType) => {
     }
     case 'togglebookmarks':
       if (bookmarksPanel) {
+        dismissAddressAutocompleteForOverlay();
         bookmarksPanel.classList.toggle('open');
         historyPanel?.classList.remove('open');
         settingsOverlay?.classList.remove('open');
@@ -1002,27 +1064,114 @@ let currentSuggestions = [];
 let autocompleteRequestToken = 0;
 let autocompleteRenderToken = 0;
 
+function setAddressBarInteractionActive(active) {
+  const topBar = document.getElementById('top-bar');
+  document.body.classList.toggle('address-bar-active', !!active);
+  topBar?.classList.toggle('address-bar-active', !!active);
+}
+
+function setAutocompleteVisibility(active) {
+  const topBar = document.getElementById('top-bar');
+  const dropdown = document.getElementById('autocomplete-dropdown');
+  document.body.classList.toggle('autocomplete-active', !!active);
+  topBar?.classList.toggle('autocomplete-active', !!active);
+  dropdown?.classList.toggle('is-visible', !!active);
+}
+
+function isActiveTabNewTab() {
+  const activeTab = state.tabs[state.activeTabId];
+  const url = String(activeTab?.url || '');
+  return !activeTab || !url || url === 'oslo://newtab' || url.includes('/newtab/newtab.html') || url.includes('\\newtab\\newtab.html');
+}
+
+function getNewtabTopbarAutocompletePosition() {
+  const addressRect = document.querySelector('.address-bar-container')?.getBoundingClientRect();
+  const contentRect = document.getElementById('content-area')?.getBoundingClientRect();
+  if (!addressRect || !contentRect) {
+    return { left: 8, top: 0, width: Math.max(180, window.innerWidth - 16), maxHeight: 300 };
+  }
+
+  return {
+    left: Math.max(8, Math.round(addressRect.left - contentRect.left)),
+    top: Math.max(0, Math.round(addressRect.bottom + 8 - contentRect.top)),
+    width: Math.max(180, Math.round(Math.min(addressRect.width, contentRect.width - 16))),
+    maxHeight: Math.max(120, Math.round(Math.min(320, contentRect.height - 12)))
+  };
+}
+
+function sendNewtabTopbarAutocomplete() {
+  if (!state.activeTabId || !isActiveTabNewTab() || currentSuggestions.length === 0) return;
+  if (typeof window.oslo.showNewtabTopbarAutocomplete !== 'function') return;
+
+  window.oslo.showNewtabTopbarAutocomplete({
+    tabId: state.activeTabId,
+    suggestions: currentSuggestions.map(suggestion => ({
+      type: suggestion.type,
+      title: suggestion.title,
+      url: suggestion.url,
+      icon: suggestion.icon
+    })),
+    selectedIndex: selectedSuggestionIndex,
+    position: getNewtabTopbarAutocompletePosition()
+  });
+}
+
+function hideNewtabTopbarAutocomplete() {
+  if (!state.activeTabId || typeof window.oslo.hideNewtabTopbarAutocomplete !== 'function') return;
+  window.oslo.hideNewtabTopbarAutocomplete(state.activeTabId);
+}
+
 function positionAutocompleteDropdown() {
   const dropdown = document.getElementById('autocomplete-dropdown');
-  const anchor = document.querySelector('.address-bar-wrapper');
-  if (!dropdown || !anchor) return;
+  if (!dropdown) return;
 
   const gap = 8;
-  const rect = anchor.getBoundingClientRect();
-  const top = Math.max(gap, Math.min(rect.bottom + 6, window.innerHeight - gap - 48));
-  const left = Math.max(gap, rect.left);
-  const width = Math.max(180, Math.min(rect.width, window.innerWidth - left - gap));
-  const availableHeight = Math.max(48, window.innerHeight - top - gap);
-  const maxHeight = Math.min(320, availableHeight);
+  setAddressBarInteractionActive(true);
+  const topBar = document.getElementById('top-bar');
+  if (topBar) void topBar.offsetHeight;
 
-  dropdown.style.top = `${Math.round(top)}px`;
-  dropdown.style.left = `${Math.round(left)}px`;
-  dropdown.style.width = `${Math.round(width)}px`;
+  dropdown.style.top = '';
+  dropdown.style.left = '';
+  dropdown.style.right = '';
+  dropdown.style.width = '';
+
+  const rect = dropdown.getBoundingClientRect();
+  const top = Math.max(gap, Math.round(rect.top || 0));
+  const availableHeight = Math.max(96, window.innerHeight - top - gap);
+  const maxHeight = Math.min(360, availableHeight);
+
   dropdown.style.maxHeight = `${Math.round(maxHeight)}px`;
 
   const contentTop = document.getElementById('content-area')?.getBoundingClientRect().top ?? window.innerHeight;
   const dropdownHeight = Math.min(dropdown.scrollHeight || dropdown.offsetHeight || 0, maxHeight);
   dropdown.dataset.overlapsContent = top + dropdownHeight > contentTop ? 'true' : 'false';
+}
+
+function scheduleAutocompleteReposition(token = autocompleteRenderToken) {
+  let frame = 0;
+  const tick = () => {
+    const dropdown = document.getElementById('autocomplete-dropdown');
+    if (token !== autocompleteRenderToken || !dropdown || dropdown.style.display !== 'block') return;
+    positionAutocompleteDropdown();
+    if (dropdown.style.visibility !== 'hidden') {
+      sendBounds();
+    }
+    frame += 1;
+    if (frame < 6) {
+      requestAnimationFrame(tick);
+    }
+  };
+
+  requestAnimationFrame(tick);
+  setTimeout(() => {
+    if (token === autocompleteRenderToken) {
+      const dropdown = document.getElementById('autocomplete-dropdown');
+      positionAutocompleteDropdown();
+      if (dropdown && dropdown.style.display === 'block' && dropdown.style.visibility !== 'hidden') {
+        sendBounds();
+      }
+    }
+  }, 260);
 }
 
 function closeAutocompleteDropdown({ clearPreview = true } = {}) {
@@ -1033,6 +1182,11 @@ function closeAutocompleteDropdown({ clearPreview = true } = {}) {
     dropdown.style.display = 'none';
     dropdown.style.visibility = '';
     delete dropdown.dataset.overlapsContent;
+  }
+  hideNewtabTopbarAutocomplete();
+  setAutocompleteVisibility(false);
+  if (document.activeElement !== addressInput) {
+    setAddressBarInteractionActive(false);
   }
   currentSuggestions = [];
   selectedSuggestionIndex = -1;
@@ -1126,7 +1280,7 @@ function showAutocompleteSuggestions(text) {
   }
 
   const requestToken = ++autocompleteRequestToken;
-  window.oslo.getHistory().then(historyItems => {
+  const renderForHistory = (historyItems = []) => {
     if (requestToken !== autocompleteRequestToken || addressInput.value.trim().toLowerCase() !== cleanText) return;
 
     const searchEngine = document.getElementById('settings-search-engine')?.value || 'duckduckgo';
@@ -1229,7 +1383,16 @@ function showAutocompleteSuggestions(text) {
     currentSuggestions = suggestions;
     selectedSuggestionIndex = -1;
     renderAutocompleteDropdown();
-  });
+  };
+
+  renderForHistory([]);
+  window.oslo.getHistory()
+    .then(renderForHistory)
+    .catch(() => {
+      if (requestToken === autocompleteRequestToken) {
+        renderForHistory([]);
+      }
+    });
 }
 
 function renderAutocompleteDropdown() {
@@ -1238,6 +1401,21 @@ function renderAutocompleteDropdown() {
 
   if (currentSuggestions.length === 0) {
     closeAutocompleteDropdown();
+    return;
+  }
+
+  if (isActiveTabNewTab()) {
+    const token = ++autocompleteRenderToken;
+    dropdown.style.display = 'none';
+    dropdown.style.visibility = '';
+    delete dropdown.dataset.overlapsContent;
+    setAddressBarInteractionActive(true);
+    setAutocompleteVisibility(false);
+    clearContentPreviewSoon();
+    sendNewtabTopbarAutocomplete();
+    if (token === autocompleteRenderToken) {
+      sendBounds();
+    }
     return;
   }
 
@@ -1266,7 +1444,10 @@ function renderAutocompleteDropdown() {
 
   dropdown.style.visibility = 'hidden';
   dropdown.style.display = 'block';
+  setAddressBarInteractionActive(true);
+  setAutocompleteVisibility(true);
   positionAutocompleteDropdown();
+  scheduleAutocompleteReposition(token);
 
   const revealDropdown = () => {
     if (token !== autocompleteRenderToken) {

@@ -1412,6 +1412,33 @@ const osloApi = {
     const listener = (event, data) => callback(data);
     ipcRenderer.on('ui-split-side-focused', listener);
     return () => ipcRenderer.removeListener('ui-split-side-focused', listener);
+  },
+  showNewtabTopbarAutocomplete: (payload) => {
+    if (
+      payload &&
+      asTabId(payload.tabId) &&
+      Array.isArray(payload.suggestions) &&
+      payload.position &&
+      Number.isFinite(Number(payload.position.left)) &&
+      Number.isFinite(Number(payload.position.top)) &&
+      Number.isFinite(Number(payload.position.width)) &&
+      Number.isFinite(Number(payload.position.maxHeight))
+    ) {
+      ipcRenderer.send('newtab-topbar-autocomplete-show', payload);
+    }
+  },
+  hideNewtabTopbarAutocomplete: (tabId) => {
+    if (asTabId(tabId)) ipcRenderer.send('newtab-topbar-autocomplete-hide', tabId);
+  },
+  onNewtabTopbarAutocompleteActivate: (callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('ui-newtab-topbar-autocomplete-activate', listener);
+    return () => ipcRenderer.removeListener('ui-newtab-topbar-autocomplete-activate', listener);
+  },
+  onNewtabTopbarAutocompleteClose: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on('ui-newtab-topbar-autocomplete-close', listener);
+    return () => ipcRenderer.removeListener('ui-newtab-topbar-autocomplete-close', listener);
   }
 };
 
@@ -1424,7 +1451,21 @@ if (pageKind === 'app') {
     getBookmarks: osloApi.getBookmarks,
     getHistory: osloApi.getHistory,
     onSettingsUpdated: osloApi.onSettingsUpdated,
-    onSettingBroadcast: osloApi.onSettingBroadcast
+    onSettingBroadcast: osloApi.onSettingBroadcast,
+    onTopbarAutocompleteShow: (callback) => {
+      const listener = (event, data) => callback(data);
+      ipcRenderer.on('newtab-topbar-autocomplete-show', listener);
+      return () => ipcRenderer.removeListener('newtab-topbar-autocomplete-show', listener);
+    },
+    onTopbarAutocompleteHide: (callback) => {
+      const listener = () => callback();
+      ipcRenderer.on('newtab-topbar-autocomplete-hide', listener);
+      return () => ipcRenderer.removeListener('newtab-topbar-autocomplete-hide', listener);
+    },
+    activateTopbarAutocomplete: (index) => {
+      if (Number.isInteger(index) && index >= 0) ipcRenderer.send('newtab-topbar-autocomplete-activate', index);
+    },
+    closeTopbarAutocomplete: () => ipcRenderer.send('newtab-topbar-autocomplete-close')
   });
 } else if (pageKind === 'reader') {
   contextBridge.exposeInMainWorld('oslo', {

@@ -663,8 +663,9 @@
                     style="margin: 6px 0 0; font-size: 12px;">Sekmelerin RAM, CPU ve çalışma durumunu izleyin.</p>
                 </div>
                 <div class="task-manager-auto-refresh">
-                  <span data-i18n="task-manager-auto-refresh">10 saniyede bir otomatik güncellenir</span>
-                  <strong id="task-manager-countdown">10s</strong>
+                  <span data-i18n="task-manager-auto-refresh">Panel açıkken canlı izlenir</span>
+                  <strong id="task-manager-refresh-state" data-mode="stopped"
+                    data-i18n="task-manager-refresh-paused">Durakladı</strong>
                 </div>
               </div>
               <div class="task-manager-controls">
@@ -1516,6 +1517,69 @@
               </div>
             </div>
 
+            <div class="settings-card password-health-panel" id="password-health-panel">
+              <div class="settings-card-title-row">
+                <div>
+                  <div class="settings-card-title" data-i18n="password-health-title">Şifre Sağlığı</div>
+                  <p class="settings-page-desc password-health-desc" data-i18n="password-health-desc">Zayıf, tekrar kullanılan ve sızıntıda görünen kayıtları tek ekranda izleyin.</p>
+                </div>
+                <button id="settings-refresh-password-health" class="settings-action-btn secondary" type="button"
+                  data-i18n="password-health-refresh">Tara</button>
+              </div>
+              <div id="password-health-loading" class="password-health-loading">
+                <span class="password-health-spinner"></span>
+                <span data-i18n="password-health-scanning">Şifre sağlığı taranıyor...</span>
+              </div>
+              <div id="password-health-content" class="password-health-content">
+                <div class="password-health-score">
+                  <div class="password-health-score-ring" data-level="empty">
+                    <strong id="password-health-score-value">--</strong>
+                    <span data-i18n="password-health-score-label">Güvenlik skoru</span>
+                  </div>
+                  <div class="password-health-score-copy">
+                    <strong id="password-health-status" data-i18n="password-health-no-data">Veri yok</strong>
+                    <span id="password-health-summary" data-i18n="password-health-empty">Kayıtlı şifre bulunmuyor.</span>
+                  </div>
+                </div>
+                <div class="password-health-metrics">
+                  <div class="password-health-metric">
+                    <span data-i18n="password-audit-total">Toplam</span>
+                    <strong id="password-health-total">0</strong>
+                  </div>
+                  <div class="password-health-metric weak">
+                    <span data-i18n="password-audit-weak-count">Zayıf</span>
+                    <strong id="password-health-weak">0</strong>
+                  </div>
+                  <div class="password-health-metric reused">
+                    <span data-i18n="password-audit-reused-count">Tekrarlayan</span>
+                    <strong id="password-health-reused">0</strong>
+                  </div>
+                  <div class="password-health-metric breached">
+                    <span data-i18n="password-audit-breached-count">Sızıntı</span>
+                    <strong id="password-health-breached">0</strong>
+                  </div>
+                </div>
+                <div class="password-health-category-grid">
+                  <div class="password-health-category">
+                    <span data-i18n="password-health-weak-sites">Zayıf şifreler</span>
+                    <strong id="password-health-weak-sites">-</strong>
+                  </div>
+                  <div class="password-health-category">
+                    <span data-i18n="password-health-reused-sites">Tekrar kullanılanlar</span>
+                    <strong id="password-health-reused-sites">-</strong>
+                  </div>
+                  <div class="password-health-category">
+                    <span data-i18n="password-health-breached-sites">Sızıntıda çıkanlar</span>
+                    <strong id="password-health-breached-sites">-</strong>
+                  </div>
+                </div>
+                <div class="password-health-recommendations">
+                  <div class="password-health-section-title" data-i18n="password-health-recommendations">Site bazlı yenileme önerileri</div>
+                  <div id="password-health-recommendation-list" class="password-health-recommendation-list"></div>
+                </div>
+              </div>
+            </div>
+
             <div class="settings-card">
               <div class="settings-card-title" data-i18n="passwords-backup-title">Yedekle ve Geri Yükle</div>
               <p class="settings-page-desc"
@@ -1551,7 +1615,7 @@
                 <input id="saved-passwords-search" class="settings-input saved-passwords-search" type="search"
                   data-i18n-placeholder="saved-passwords-search-placeholder" placeholder="Kayıtlı şifrelerde ara..."
                   autocomplete="off" spellcheck="false">
-                <button id="settings-audit-passwords-saved" class="settings-action-btn secondary"
+                <button id="settings-audit-passwords-saved" class="settings-action-btn secondary" type="button"
                   data-i18n="password-audit-btn">Şifreleri Tara</button>
               </div>
               <div class="saved-passwords-container" style="margin-top: 14px;">

@@ -567,6 +567,45 @@ body.topbar-auto-hide #top-bar:focus-within::before {
   opacity: 0;
 }
 
+body.address-bar-active #top-bar,
+body.autocomplete-active #top-bar,
+#top-bar.address-bar-active,
+#top-bar.autocomplete-active {
+  overflow: visible;
+  z-index: 13000;
+}
+
+body.topbar-auto-hide.address-bar-active #top-bar,
+body.topbar-auto-hide.autocomplete-active #top-bar,
+body.topbar-auto-hide #top-bar.address-bar-active,
+body.topbar-auto-hide #top-bar.autocomplete-active {
+  height: var(--topbar-height);
+  min-height: var(--topbar-height);
+  padding-top: 0;
+  padding-bottom: 0;
+  border-bottom-color: var(--border-color);
+  opacity: 1;
+  overflow: visible;
+  z-index: 13000;
+}
+
+body.topbar-auto-hide.address-bar-active #top-bar > *,
+body.topbar-auto-hide.autocomplete-active #top-bar > *,
+body.topbar-auto-hide #top-bar.address-bar-active > *,
+body.topbar-auto-hide #top-bar.autocomplete-active > * {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+body.topbar-auto-hide.address-bar-active #top-bar::before,
+body.topbar-auto-hide.autocomplete-active #top-bar::before,
+body.topbar-auto-hide #top-bar.address-bar-active::before,
+body.topbar-auto-hide #top-bar.autocomplete-active::before {
+  opacity: 0;
+  pointer-events: none;
+}
+
 body.topbar-auto-hide #top-bar:hover ~ .bookmarks-bar,
 body.topbar-auto-hide #top-bar:focus-within ~ .bookmarks-bar,
 body.topbar-auto-hide .bookmarks-bar:hover,
@@ -962,7 +1001,7 @@ body.topbar-auto-hide:has(.bookmarks-bar:focus-within) #top-bar::before {
   right: 0;
   bottom: 0;
   background-color: var(--bg-primary);
-  z-index: 1000;
+  z-index: 16000;
   display: none;
 }
 
@@ -2487,7 +2526,13 @@ body.topbar-auto-hide .bookmarks-bar {
 }
 
 .autocomplete-dropdown {
-  position: fixed;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  width: auto;
+  min-width: 100%;
+  max-width: 100%;
   background: var(--bg-glass);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -2498,6 +2543,18 @@ body.topbar-auto-hide .bookmarks-bar {
   z-index: 12000;
   box-shadow: var(--shadow-premium);
   padding: 6px;
+}
+
+body.autocomplete-active .address-bar-container {
+  z-index: 13001;
+}
+
+body.autocomplete-active .autocomplete-dropdown,
+.autocomplete-dropdown.is-visible {
+  z-index: 14000;
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .autocomplete-item {
@@ -3973,8 +4030,20 @@ body.light-mode #sidebar.collapsed .tab-item.muted .tab-audio-btn:hover {
 
 .task-manager-auto-refresh strong {
   color: var(--accent-color);
-  min-width: 28px;
+  min-width: 56px;
   text-align: right;
+}
+
+.task-manager-auto-refresh strong[data-mode="live"] {
+  color: #22c55e;
+}
+
+.task-manager-auto-refresh strong[data-mode="slow"] {
+  color: #fbbf24;
+}
+
+.task-manager-auto-refresh strong[data-mode="stopped"] {
+  color: var(--text-muted);
 }
 
 .task-manager-controls {
@@ -4430,10 +4499,289 @@ body.light-mode #sidebar.collapsed .tab-item.muted .tab-audio-btn:hover {
   text-align: right;
 }
 
+.password-health-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.password-health-desc {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+.password-health-loading {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.02);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.password-health-panel.loading .password-health-loading {
+  display: flex;
+}
+
+.password-health-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-top-color: var(--accent-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.password-health-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.password-health-score {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.password-health-score-ring,
+.password-health-score-copy,
+.password-health-metric,
+.password-health-category,
+.password-health-recommendation-row {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.025);
+}
+
+.password-health-score-ring {
+  min-height: 132px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--accent-color);
+  border-color: rgba(0, 221, 255, 0.2);
+  background: radial-gradient(circle at center, rgba(0, 221, 255, 0.1), rgba(255, 255, 255, 0.025) 62%);
+}
+
+.password-health-score-ring[data-level="excellent"],
+.password-health-score-ring[data-level="good"] {
+  color: #22c55e;
+  border-color: rgba(34, 197, 94, 0.28);
+  background: radial-gradient(circle at center, rgba(34, 197, 94, 0.1), rgba(255, 255, 255, 0.025) 62%);
+}
+
+.password-health-score-ring[data-level="warning"] {
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.28);
+  background: radial-gradient(circle at center, rgba(245, 158, 11, 0.1), rgba(255, 255, 255, 0.025) 62%);
+}
+
+.password-health-score-ring[data-level="critical"] {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.28);
+  background: radial-gradient(circle at center, rgba(239, 68, 68, 0.1), rgba(255, 255, 255, 0.025) 62%);
+}
+
+.password-health-score-ring strong {
+  font-size: 34px;
+  line-height: 1;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.password-health-score-ring span {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.password-health-score-copy {
+  min-height: 132px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+
+.password-health-score-copy strong {
+  color: var(--text-main);
+  font-size: 18px;
+}
+
+.password-health-score-copy span {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.password-health-metrics,
+.password-health-category-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.password-health-category-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.password-health-metric,
+.password-health-category {
+  min-width: 0;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.password-health-metric span,
+.password-health-category span,
+.password-health-section-title {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.password-health-metric strong {
+  color: var(--text-main);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.password-health-metric.weak strong {
+  color: #f87171;
+}
+
+.password-health-metric.reused strong {
+  color: #fbbf24;
+}
+
+.password-health-metric.breached strong {
+  color: #fecaca;
+}
+
+.password-health-category strong {
+  color: var(--text-main);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.password-health-recommendations {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.password-health-recommendation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.password-health-recommendation-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 11px 12px;
+}
+
+.password-health-recommendation-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.password-health-recommendation-site {
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.password-health-recommendation-detail {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.password-health-reason-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  justify-content: flex-end;
+}
+
+.password-health-reason {
+  padding: 4px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+}
+
+.password-health-reason.weak {
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.24);
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+.password-health-reason.reused {
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.25);
+  background-color: rgba(245, 158, 11, 0.1);
+}
+
+.password-health-reason.breached {
+  color: #fecaca;
+  border-color: rgba(220, 38, 38, 0.34);
+  background-color: rgba(220, 38, 38, 0.14);
+}
+
+.password-health-empty {
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+  padding: 14px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
 @media (max-width: 720px) {
   .saved-passwords-toolbar,
-  .password-generator-box {
+  .password-generator-box,
+  .password-health-score,
+  .password-health-metrics,
+  .password-health-category-grid {
     grid-template-columns: 1fr;
+  }
+
+  .password-health-recommendation-row {
+    grid-template-columns: 1fr;
+  }
+
+  .password-health-reason-list {
+    justify-content: flex-start;
   }
 
   .password-generator-length-row {
@@ -4559,6 +4907,7 @@ body.light-mode #sidebar.collapsed .tab-item.muted .tab-audio-btn:hover {
 }
 
 .password-action-btn {
+  position: relative;
   background: none;
   border: none;
   color: var(--text-muted);
@@ -4574,6 +4923,46 @@ body.light-mode #sidebar.collapsed .tab-item.muted .tab-audio-btn:hover {
 .password-action-btn:hover {
   color: var(--text-main);
   background-color: rgba(255, 255, 255, 0.05);
+}
+
+.password-action-btn.copied {
+  color: var(--accent-color);
+  background-color: rgba(0, 221, 255, 0.08);
+}
+
+.password-action-btn.copied::after {
+  content: attr(data-copy-feedback);
+  position: absolute;
+  right: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(50%);
+  z-index: 20;
+  padding: 5px 8px;
+  border-radius: 7px;
+  border: 1px solid rgba(0, 221, 255, 0.25);
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.password-action-btn.copied::before {
+  content: '';
+  position: absolute;
+  right: 50%;
+  bottom: calc(100% + 3px);
+  transform: translateX(50%) rotate(45deg);
+  z-index: 19;
+  width: 8px;
+  height: 8px;
+  border-right: 1px solid rgba(0, 221, 255, 0.25);
+  border-bottom: 1px solid rgba(0, 221, 255, 0.25);
+  background-color: var(--bg-primary);
+  pointer-events: none;
 }
 
 .password-action-btn.delete-btn {

@@ -87,8 +87,9 @@ function checkTaskManagerFlow() {
   expect('task manager: main tab metrics handler exists', main.includes("ipcMain.handle('task-manager-tabs-get'"), 'task manager IPC handler missing');
   expect('task manager: preload exposes tab metrics', preload.includes('getTaskManagerTabs'), 'task manager preload bridge missing');
   expect('task manager: resource monitor tab exists', indexHtml.includes('settings-tab-ram') && indexHtml.includes('task-manager-list'), 'resource monitor settings tab missing');
-  expect('task manager: auto refresh replaces manual refresh', indexHtml.includes('task-manager-countdown') && !indexHtml.includes('id="task-manager-refresh"'), 'task manager auto refresh UI missing');
-  expect('task manager: renderer refreshes metrics automatically', settings.includes('renderTaskManagerSection') && settings.includes('ensureTaskManagerAutoRefresh'), 'task manager auto refresh renderer flow missing');
+  expect('task manager: live refresh status exists', indexHtml.includes('task-manager-refresh-state') && !indexHtml.includes('task-manager-countdown'), 'task manager live refresh status missing');
+  expect('task manager: renderer refreshes metrics continuously when active', settings.includes('renderTaskManagerSection') && settings.includes('ensureTaskManagerLiveRefresh') && settings.includes('TASK_MANAGER_REALTIME_REFRESH_MS'), 'task manager live refresh renderer flow missing');
+  expect('task manager: background refresh is throttled', settings.includes('TASK_MANAGER_BACKGROUND_REFRESH_MS') && settings.includes('visibilitychange'), 'task manager background throttle missing');
 }
 
 function checkSiteSecurityPanel() {
@@ -100,6 +101,39 @@ function checkSiteSecurityPanel() {
   expect('site security: preload exposes summary API', preload.includes('getSiteSecuritySummary'), 'site security preload bridge missing');
   expect('site security: advanced panel fields exist', indexHtml.includes('security-info-blocked-count') && indexHtml.includes('security-info-permission-controls'), 'advanced site security panel fields missing');
   expect('site security: renderer manages quick permissions', renderer.includes('SITE_SECURITY_PERMISSION_TYPES') && renderer.includes('renderSitePermissionControls'), 'site quick permission renderer flow missing');
+}
+
+function checkPasswordHealthPanel() {
+  const main = read('src/main/main.js');
+  const indexHtml = read('src/renderer/index.html');
+  const settings = read('src/renderer/js/settings.js');
+  expect('password health: settings panel exists', indexHtml.includes('password-health-panel') && indexHtml.includes('password-health-score-value'), 'password health panel missing');
+  expect('password health: audit returns score and recommendations', main.includes('securityScore') && main.includes('recommendations'), 'password audit health fields missing');
+  expect('password health: renderer refreshes panel', settings.includes('refreshPasswordHealthPanel') && settings.includes('renderPasswordHealthPanel'), 'password health renderer flow missing');
+  expect('password health: scan button is bound robustly', indexHtml.includes('settings-refresh-password-health') && settings.includes('bindPasswordHealthScanControls') && settings.includes('passwordHealthScanControlsBound'), 'password health scan binding missing');
+  expect('password health: copy buttons show feedback', settings.includes('showPasswordCopyFeedback') && settings.includes('copyPasswordFieldValue'), 'saved password copy feedback missing');
+}
+
+function checkAutocompleteTopbarEdgeCase() {
+  const main = read('src/main/main.js');
+  const preload = read('src/preload.js');
+  const renderer = read('src/renderer/renderer.js');
+  const style = read('src/renderer/style.css');
+  const newtab = read('src/newtab/newtab.js');
+  const newtabCss = read('src/newtab/newtab.css');
+  expect('autocomplete: address interaction state is managed', renderer.includes('setAddressBarInteractionActive') && renderer.includes('setAutocompleteVisibility'), 'autocomplete active state helpers missing');
+  expect('autocomplete: suggestions render before history resolves', renderer.includes('renderForHistory([])') && renderer.includes('.catch(() =>'), 'autocomplete immediate fallback missing');
+  expect('autocomplete: dropdown is remeasured through top bar transitions', renderer.includes('scheduleAutocompleteReposition') && renderer.includes('positionAutocompleteDropdown'), 'autocomplete transition-safe positioning missing');
+  expect('autocomplete: dropdown is anchored to the address bar container', style.includes('.autocomplete-dropdown') && style.includes('position: absolute') && style.includes('top: calc(100% + 8px)') && style.includes('min-width: 100%'), 'autocomplete address-bar anchoring missing');
+  expect('autocomplete: newtab uses in-page topbar suggestions', renderer.includes('sendNewtabTopbarAutocomplete') && renderer.includes('isActiveTabNewTab()') && newtab.includes('renderTopbarAutocomplete'), 'newtab topbar autocomplete path missing');
+  expect('autocomplete: newtab autocomplete IPC bridge exists', main.includes('newtab-topbar-autocomplete-show') && preload.includes('showNewtabTopbarAutocomplete') && preload.includes('onTopbarAutocompleteShow'), 'newtab autocomplete IPC bridge missing');
+  expect('autocomplete: newtab topbar suggestions are styled in-page', newtabCss.includes('.newtab-topbar-autocomplete-dropdown') && newtabCss.includes('position: fixed'), 'newtab topbar autocomplete CSS missing');
+  expect('autocomplete: preview is reset before capture', renderer.includes('clearContentPreviewNow') && renderer.includes('await new Promise(resolve => setTimeout(resolve, 50))'), 'autocomplete preview reset before capture missing');
+  expect('autocomplete: webview is hidden only with ready preview', renderer.includes('isAutocompleteOverPreview') && renderer.includes('hasActiveContentPreview()'), 'autocomplete preview-ready guard missing');
+  expect('autocomplete: overlay navigation clears address suggestions', renderer.includes('dismissAddressAutocompleteForOverlay') && renderer.includes('setAddressBarInteractionActive(false)'), 'overlay autocomplete dismissal missing');
+  expect('autocomplete: autohide top bar stays visible while active', style.includes('body.topbar-auto-hide.address-bar-active #top-bar') && style.includes('body.topbar-auto-hide.autocomplete-active #top-bar'), 'top bar autohide active override missing');
+  expect('autocomplete: suggestions are promoted above hidden chrome', style.includes('body.autocomplete-active .autocomplete-dropdown') && style.includes('.autocomplete-dropdown.is-visible'), 'autocomplete z-index visibility override missing');
+  expect('autocomplete: settings overlays stay above active address chrome', style.includes('z-index: 16000') && style.includes('z-index: 14000'), 'settings overlay z-index guard missing');
 }
 
 function checkBuildConfig() {
@@ -138,6 +172,8 @@ function run() {
   checkAdvancedDownloads();
   checkTaskManagerFlow();
   checkSiteSecurityPanel();
+  checkPasswordHealthPanel();
+  checkAutocompleteTopbarEdgeCase();
   checkBuildConfig();
   checkI18n();
   checkNativeAlerts();

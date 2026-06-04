@@ -655,6 +655,83 @@ document.addEventListener('DOMContentLoaded', () => {
   let selectedNewtabSuggestionIndex = -1;
   let currentNewtabSuggestions = [];
   let newtabAutocompleteToken = 0;
+  let topbarAutocompleteDropdown = null;
+  let topbarAutocompleteOpen = false;
+
+  function ensureTopbarAutocompleteDropdown() {
+    if (topbarAutocompleteDropdown) return topbarAutocompleteDropdown;
+
+    topbarAutocompleteDropdown = document.createElement('div');
+    topbarAutocompleteDropdown.id = 'newtab-topbar-autocomplete-dropdown';
+    topbarAutocompleteDropdown.className = 'newtab-topbar-autocomplete-dropdown';
+    topbarAutocompleteDropdown.style.display = 'none';
+    document.body.appendChild(topbarAutocompleteDropdown);
+    return topbarAutocompleteDropdown;
+  }
+
+  function closeTopbarAutocomplete({ notify = false } = {}) {
+    if (topbarAutocompleteDropdown) {
+      topbarAutocompleteDropdown.style.display = 'none';
+      topbarAutocompleteDropdown.innerHTML = '';
+    }
+    topbarAutocompleteOpen = false;
+
+    if (notify && window.oslo && typeof window.oslo.closeTopbarAutocomplete === 'function') {
+      window.oslo.closeTopbarAutocomplete();
+    }
+  }
+
+  function renderTopbarAutocomplete(payload) {
+    const dropdown = ensureTopbarAutocompleteDropdown();
+    const suggestions = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
+    const position = payload?.position || {};
+    const selectedIndex = Number.isInteger(payload?.selectedIndex) ? payload.selectedIndex : -1;
+
+    if (suggestions.length === 0) {
+      closeTopbarAutocomplete();
+      return;
+    }
+
+    dropdown.innerHTML = '';
+    dropdown.style.left = `${Math.max(0, Number(position.left) || 0)}px`;
+    dropdown.style.top = `${Math.max(0, Number(position.top) || 0)}px`;
+    dropdown.style.width = `${Math.max(180, Number(position.width) || 180)}px`;
+    dropdown.style.maxHeight = `${Math.max(96, Number(position.maxHeight) || 260)}px`;
+
+    suggestions.forEach((suggestion, index) => {
+      const item = document.createElement('div');
+      item.className = `newtab-autocomplete-item ${index === selectedIndex ? 'selected' : ''}`;
+      item.innerHTML = `
+        <div class="newtab-autocomplete-icon">${suggestion.icon || linkSuggestionIcon()}</div>
+        <div class="newtab-autocomplete-text">
+          <div class="newtab-autocomplete-title">${escapeHtml(suggestion.title)}</div>
+          <div class="newtab-autocomplete-url">${escapeHtml(suggestion.url)}</div>
+        </div>
+      `;
+
+      item.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+      });
+      item.addEventListener('click', () => {
+        if (window.oslo && typeof window.oslo.activateTopbarAutocomplete === 'function') {
+          window.oslo.activateTopbarAutocomplete(index);
+        }
+      });
+
+      dropdown.appendChild(item);
+    });
+
+    dropdown.style.display = 'block';
+    topbarAutocompleteOpen = true;
+  }
+
+  if (window.oslo && typeof window.oslo.onTopbarAutocompleteShow === 'function') {
+    window.oslo.onTopbarAutocompleteShow(renderTopbarAutocomplete);
+  }
+
+  if (window.oslo && typeof window.oslo.onTopbarAutocompleteHide === 'function') {
+    window.oslo.onTopbarAutocompleteHide(() => closeTopbarAutocomplete());
+  }
 
   function searchSuggestionIcon() {
     return `
@@ -909,6 +986,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.addEventListener('click', (event) => {
+    if (topbarAutocompleteOpen && !event.target.closest('#newtab-topbar-autocomplete-dropdown')) {
+      closeTopbarAutocomplete({ notify: true });
+    }
+
     if (!event.target.closest('.search-box')) {
       closeNewtabAutocomplete();
     }

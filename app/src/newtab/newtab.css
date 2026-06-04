@@ -244,6 +244,22 @@ body.reduce-motion *::after {
   z-index: 30;
 }
 
+.newtab-topbar-autocomplete-dropdown {
+  position: fixed;
+  max-height: 320px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+  background-color: rgba(18, 20, 24, 0.98);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.38), 0 0 0 1px rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  text-align: left;
+  z-index: 100;
+}
+
 .newtab-autocomplete-item {
   display: flex;
   align-items: center;
@@ -481,7 +497,8 @@ body.light-mode #search-input::placeholder {
   color: #9ca3af;
 }
 
-body.light-mode .newtab-autocomplete-dropdown {
+body.light-mode .newtab-autocomplete-dropdown,
+body.light-mode .newtab-topbar-autocomplete-dropdown {
   background-color: rgba(255, 255, 255, 0.96);
   border-color: rgba(0, 0, 0, 0.08);
   box-shadow: 0 24px 70px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(15, 23, 42, 0.02);
@@ -836,6 +853,7 @@ body.os-windows.light-mode {
 
 body.os-windows .search-input-wrapper,
 body.os-windows .newtab-autocomplete-dropdown,
+body.os-windows .newtab-topbar-autocomplete-dropdown,
 body.os-windows .shortcut-card,
 body.os-windows .weather-card,
 body.os-windows .edit-mode-btn,
