@@ -8,7 +8,10 @@ const { createTelemetryService } = require('./telemetry');
 
 // GitHub repository configuration for updates
 const GITHUB_REPO = 'OSLO-Team/oslo-browser'; // Format: 'owner/repo'
-const EXPECTED_UPDATE_PUBLISHERS = ['OSLO Browser', 'oslobrowser.com', 'Emir Can Turan'];
+const OFFICIAL_WEBSITE_URL = 'https://www.browser.osloteam.net';
+const OFFICIAL_DOWNLOAD_URL = `${OFFICIAL_WEBSITE_URL}/download`;
+const TRUSTED_UPDATE_HOSTS = new Set(['github.com', 'browser.osloteam.net', 'www.browser.osloteam.net']);
+const EXPECTED_UPDATE_PUBLISHERS = ['OSLO Browser', 'OSLO TEAM', 'browser.osloteam.net', 'www.browser.osloteam.net', 'Emir Can Turan'];
 const REQUIRE_SIGNED_UPDATES = process.env.OSLO_REQUIRE_SIGNED_UPDATES === '1';
 const UPDATE_STATE_FILE = 'pending-update.json';
 const NEWTAB_PAGE_PATH = path.join(__dirname, '../newtab/newtab.html');
@@ -2990,7 +2993,9 @@ ipcMain.handle('profiles-create', async (event, profileInput = {}) => {
 ipcMain.handle('profiles-update', async (event, profileInput = {}) => {
   assertMainUiSender(event);
   const id = String(profileInput.id || '');
-  if (!id || id === GUEST_PROFILE_ID) throw new Error('Profile cannot be edited.');
+  if (!id || id === DEFAULT_PROFILE_ID || id === GUEST_PROFILE_ID) {
+    throw new Error('Profile cannot be edited.');
+  }
 
   const profiles = getPersistedProfiles();
   const index = profiles.findIndex(profile => profile.id === id);
@@ -3888,8 +3893,7 @@ function isTrustedUpdateUrl(value) {
   if (typeof value !== 'string' || value.length > 4096) return false;
   try {
     const parsed = new URL(value);
-    const allowedHosts = new Set(['github.com', 'oslobrowser.com', 'www.oslobrowser.com']);
-    return parsed.protocol === 'https:' && allowedHosts.has(parsed.hostname.toLowerCase());
+    return parsed.protocol === 'https:' && TRUSTED_UPDATE_HOSTS.has(parsed.hostname.toLowerCase());
   } catch (error) {
     return false;
   }
@@ -4074,7 +4078,7 @@ ipcMain.handle('check-for-updates', async (event) => {
     const release = await fetchLatestGithubRelease();
     const latestVersion = normalizeVersion(release.tag_name);
 
-    let downloadUrl = 'https://oslobrowser.com/download';
+    let downloadUrl = OFFICIAL_DOWNLOAD_URL;
     let assetName = '';
     let checksum = null;
     if (release.assets && release.assets.length > 0) {

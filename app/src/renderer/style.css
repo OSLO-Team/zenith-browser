@@ -547,11 +547,14 @@ body.reduce-motion *::after {
   position: absolute;
   left: 0;
   bottom: calc(100% + 8px);
-  width: min(278px, calc(100vw - 28px));
-  max-height: min(380px, calc(100vh - 120px));
+  width: 100%;
+  max-width: 100%;
+  max-height: min(318px, calc(100vh - 210px));
+  box-sizing: border-box;
   overflow-y: auto;
+  overflow-x: hidden;
   display: none;
-  padding: 8px;
+  padding: 7px;
   border: 1px solid var(--border-color);
   border-radius: 10px;
   background: var(--bg-glass);
@@ -574,11 +577,11 @@ body.reduce-motion *::after {
   background: transparent;
   color: var(--text-main);
   border-radius: 8px;
-  padding: 9px;
+  padding: 8px;
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   cursor: pointer;
   text-align: left;
   font-size: 13px;
@@ -608,6 +611,9 @@ body.reduce-motion *::after {
 .profile-menu-desc {
   color: var(--text-muted);
   font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .profile-menu-check {
@@ -639,6 +645,8 @@ body.reduce-motion *::after {
 #sidebar.collapsed .profile-menu {
   left: 48px;
   bottom: 0;
+  width: min(260px, calc(100vw - 72px));
+  max-width: min(260px, calc(100vw - 72px));
 }
 
 .profile-manager-card {
@@ -655,6 +663,37 @@ body.reduce-motion *::after {
   gap: 8px;
   max-height: 220px;
   overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 221, 255, 0.58) rgba(255, 255, 255, 0.04);
+}
+
+.profile-manager-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.profile-manager-list::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.035);
+  border-radius: 999px;
+}
+
+.profile-manager-list::-webkit-scrollbar-thumb {
+  min-height: 44px;
+  border: 2px solid rgba(18, 20, 24, 0.86);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(0, 221, 255, 0.76), rgba(139, 92, 246, 0.68));
+}
+
+.profile-manager-list::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(0, 221, 255, 0.95), rgba(139, 92, 246, 0.88));
+}
+
+.profile-manager-list::-webkit-scrollbar-button,
+.profile-manager-list::-webkit-scrollbar-corner {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .profile-manager-row {
@@ -676,6 +715,10 @@ body.reduce-motion *::after {
 
 .profile-manager-row.guest {
   opacity: 0.82;
+}
+
+.profile-manager-row.locked {
+  opacity: 0.78;
 }
 
 .profile-manager-name {
@@ -727,8 +770,52 @@ body.reduce-motion *::after {
   padding: 5px;
 }
 
+.profile-input:disabled,
+.profile-color-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 .profile-manager-footer {
   align-items: center;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.profile-manager-footer .modal-btn {
+  min-width: 84px;
+}
+
+.profile-manager-footer .modal-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+  pointer-events: none;
+}
+
+.profile-status-text {
+  min-height: 22px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.profile-status-text.success {
+  color: #22c55e;
+}
+
+.profile-status-text.error {
+  color: #f87171;
+}
+
+.profile-status-text.info {
+  color: var(--accent-color);
+}
+
+.profile-status-text:empty {
+  display: none;
 }
 
 .danger-btn {

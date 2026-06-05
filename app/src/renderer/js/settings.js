@@ -2286,7 +2286,7 @@ export function initSettings() {
   if (linkVisitWebsite) {
     linkVisitWebsite.addEventListener('click', (e) => {
       e.preventDefault();
-      window.oslo.createTab({ url: 'https://oslobrowser.com' });
+      window.oslo.createTab({ url: 'https://www.browser.osloteam.net' });
       settingsOverlay?.classList.remove('open');
       window.dispatchEvent(new Event('resize'));
     });

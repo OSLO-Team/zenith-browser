@@ -92,6 +92,7 @@ const profileColorInput = document.getElementById('profile-color-input');
 const profileNewBtn = document.getElementById('profile-new-btn');
 const profileSaveBtn = document.getElementById('profile-save-btn');
 const profileDeleteBtn = document.getElementById('profile-delete-btn');
+const profileStatusText = document.getElementById('profile-status-text');
 
 const bookmarksPanel = document.getElementById('bookmarks-panel');
 const historyPanel = document.getElementById('history-panel');
@@ -111,13 +112,17 @@ const bookmarkEditUrl = document.getElementById('bookmark-edit-url');
 const tabContextMenu = document.getElementById('tab-context-menu');
 let contentPreviewClearTimer = null;
 let selectedProfileIdForEdit = 'default';
+let profileFormMode = 'edit';
 let suppressNextProfileSwitchedEvent = false;
+let profileStatusTimer = null;
+const profileColorChoices = ['#00ddff', '#8b5cf6', '#22c55e', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6'];
 
 function getUiText(key, fallback) {
   return translations[state.currentLang]?.[key] || translations.tr?.[key] || fallback;
 }
 
 function normalizeProfilePayload(payload = {}) {
+  const previousSelection = selectedProfileIdForEdit;
   const profiles = Array.isArray(payload.profiles) ? payload.profiles : [];
   state.profiles = profiles.map(profile => ({
     id: String(profile.id || ''),
@@ -125,11 +130,21 @@ function normalizeProfilePayload(payload = {}) {
     avatar: String(profile.avatar || profile.name?.charAt(0) || 'P').slice(0, 2).toUpperCase(),
     color: /^#[0-9a-f]{6}$/i.test(String(profile.color || '')) ? profile.color : '#00ddff',
     isDefault: !!profile.isDefault,
-    isGuest: !!profile.isGuest
+    isGuest: !!profile.isGuest,
+    createdAt: Number(profile.createdAt) || 0,
+    updatedAt: Number(profile.updatedAt) || 0
   })).filter(profile => profile.id);
   state.activeProfileId = payload.activeProfileId || 'default';
   state.activeProfile = state.profiles.find(profile => profile.id === state.activeProfileId) || state.profiles[0] || null;
-  selectedProfileIdForEdit = state.activeProfile?.isGuest ? 'default' : (state.activeProfile?.id || 'default');
+  if (profileFormMode === 'create') {
+    selectedProfileIdForEdit = '';
+    return;
+  }
+
+  const stillManaged = state.profiles.some(profile => profile.id === previousSelection);
+  selectedProfileIdForEdit = stillManaged
+    ? previousSelection
+    : (state.activeProfile?.id || 'default');
 }
 
 function getProfileDescription(profile) {
@@ -137,6 +152,135 @@ function getProfileDescription(profile) {
   if (profile.isGuest) return getUiText('profile-guest-desc', 'Temporary browsing');
   if (profile.isDefault) return getUiText('profile-default-desc', 'Default profile');
   return getUiText('profile-profile-desc', 'Separate data space');
+}
+
+function getManagedProfiles() {
+  return [...(state.profiles || [])].sort((a, b) => {
+    const rankA = a.isDefault ? 0 : (a.isGuest ? 1 : 2);
+    const rankB = b.isDefault ? 0 : (b.isGuest ? 1 : 2);
+    if (rankA !== rankB) return rankA - rankB;
+
+    if (rankA === 2) {
+      const createdA = Number(a.createdAt) || 0;
+      const createdB = Number(b.createdAt) || 0;
+      if (createdA !== createdB) return createdA - createdB;
+    }
+
+    return String(a.name || '').localeCompare(String(b.name || ''), state.currentLang || 'tr');
+  });
+}
+
+function getSelectedManagedProfile() {
+  return getManagedProfiles().find(profile => profile.id === selectedProfileIdForEdit) || null;
+}
+
+function isProfileLocked(profile) {
+  return !!profile && (profile.isDefault || profile.isGuest);
+}
+
+function getProfileLockMessage(profile) {
+  if (profile?.isGuest) {
+    return getUiText('profile-guest-locked', 'Guest profile is temporary and cannot be edited.');
+  }
+  if (profile?.isDefault) {
+    return getUiText('profile-default-locked', 'Default personal profile is protected and cannot be edited.');
+  }
+  return '';
+}
+
+function getProfileAvatarFromName(name) {
+  return (String(name || '').trim().charAt(0) || 'P').slice(0, 2).toUpperCase();
+}
+
+function getNextProfileName() {
+  const baseName = getUiText('profile-default-new-name', 'Yeni Profil');
+  const usedNames = new Set(getManagedProfiles().map(profile => String(profile.name || '').trim().toLocaleLowerCase()));
+  for (let index = 1; index < 1000; index += 1) {
+    const candidate = index === 1 ? baseName : `${baseName} ${index}`;
+    if (!usedNames.has(candidate.toLocaleLowerCase())) return candidate;
+  }
+  return `${baseName} ${Date.now().toString(36).slice(-4)}`;
+}
+
+function setProfileFormDisabled(disabled) {
+  [profileNameInput, profileAvatarInput, profileColorInput].forEach(input => {
+    if (input) input.disabled = disabled;
+  });
+}
+
+function showProfileStatus(message = '', tone = 'info', options = {}) {
+  if (!profileStatusText) return;
+  if (profileStatusTimer) {
+    clearTimeout(profileStatusTimer);
+    profileStatusTimer = null;
+  }
+
+  profileStatusText.textContent = message;
+  profileStatusText.className = `profile-status-text ${message ? tone : ''}`.trim();
+  profileStatusText.dataset.persistent = options.persist ? 'true' : 'false';
+
+  if (message && !options.persist) {
+    profileStatusTimer = setTimeout(() => {
+      profileStatusText.textContent = '';
+      profileStatusText.className = 'profile-status-text';
+      profileStatusText.dataset.persistent = 'false';
+      profileStatusTimer = null;
+    }, 2600);
+  }
+}
+
+function showProfileToast(message) {
+  if (!message) return;
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement('div');
+  toast.className = 'toast-message profile-toast-message';
+
+  const dot = document.createElement('span');
+  dot.style.width = '8px';
+  dot.style.height = '8px';
+  dot.style.borderRadius = '999px';
+  dot.style.background = 'var(--accent-color)';
+  dot.style.boxShadow = '0 0 12px rgba(0, 221, 255, 0.45)';
+  dot.style.flexShrink = '0';
+
+  const messageEl = document.createElement('span');
+  messageEl.textContent = message;
+
+  toast.appendChild(dot);
+  toast.appendChild(messageEl);
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.animation = 'toastFadeOut 0.3s cubic-bezier(0.16, 1, 0.3, 1)';
+    toast.addEventListener('animationend', () => toast.remove(), { once: true });
+  }, 2600);
+}
+
+function updateProfileFormMode() {
+  const creating = profileFormMode === 'create';
+  const selectedProfile = creating ? null : getSelectedManagedProfile();
+  const locked = !creating && isProfileLocked(selectedProfile);
+
+  setProfileFormDisabled(locked);
+  if (profileSaveBtn) {
+    profileSaveBtn.disabled = locked;
+    profileSaveBtn.textContent = getUiText(creating ? 'profile-create' : 'modal-save', creating ? 'Oluştur' : 'Kaydet');
+  }
+  if (profileDeleteBtn) {
+    profileDeleteBtn.disabled = creating || !selectedProfile || selectedProfile.isDefault || selectedProfile.isGuest;
+  }
+
+  if (locked) {
+    showProfileStatus(getProfileLockMessage(selectedProfile), 'info', { persist: true });
+  } else if (profileStatusText?.dataset.persistent === 'true') {
+    showProfileStatus('');
+  }
 }
 
 function renderProfileSelector() {
@@ -150,7 +294,7 @@ function renderProfileSelector() {
 
 function renderProfileMenu() {
   if (!profileMenu) return;
-  const profileRows = (state.profiles || []).map(profile => {
+  const profileRows = getManagedProfiles().map(profile => {
     const isActive = profile.id === state.activeProfileId;
     return `
       <button class="profile-menu-item ${isActive ? 'active' : ''}" data-profile-switch="${escapeHtml(profile.id)}">
@@ -179,13 +323,46 @@ function renderProfileMenu() {
   profileMenu.querySelectorAll('[data-profile-switch]').forEach(button => {
     button.addEventListener('click', () => {
       profileSwitcher?.classList.remove('open');
+      clearProfileMenuOverlap();
       switchProfile(button.getAttribute('data-profile-switch'));
     });
   });
   profileMenu.querySelector('#profile-menu-manage')?.addEventListener('click', () => {
     profileSwitcher?.classList.remove('open');
+    clearProfileMenuOverlap({ clearPreview: false });
     openProfileManager();
   });
+}
+
+function updateProfileMenuOverlapState() {
+  if (!profileMenu) return false;
+  if (!profileSwitcher?.classList.contains('open')) {
+    clearProfileMenuOverlap({ clearPreview: !profileManagerModal?.classList.contains('open') });
+    return false;
+  }
+
+  const contentArea = document.getElementById('content-area');
+  if (!contentArea) return false;
+
+  const menuRect = profileMenu.getBoundingClientRect();
+  const contentRect = contentArea.getBoundingClientRect();
+  const overlaps = menuRect.right > contentRect.left
+    && menuRect.left < contentRect.right
+    && menuRect.bottom > contentRect.top
+    && menuRect.top < contentRect.bottom;
+
+  profileMenu.dataset.overlapsContent = overlaps ? 'true' : 'false';
+  return overlaps;
+}
+
+function clearProfileMenuOverlap({ clearPreview = true } = {}) {
+  if (profileMenu) delete profileMenu.dataset.overlapsContent;
+  sendBounds();
+  if (clearPreview) {
+    clearContentPreviewSoon();
+  } else {
+    cancelContentPreviewClearTimer();
+  }
 }
 
 function renderProfiles() {
@@ -196,79 +373,69 @@ function renderProfiles() {
 
 window.renderProfiles = renderProfiles;
 
-function getEditableProfiles() {
-  return (state.profiles || []).filter(profile => !profile.isGuest);
-}
-
 function selectProfileForEditing(profileId) {
-  const editableProfiles = getEditableProfiles();
-  const profile = editableProfiles.find(item => item.id === profileId) || editableProfiles[0] || null;
+  const managedProfiles = getManagedProfiles();
+  const profile = managedProfiles.find(item => item.id === profileId) || managedProfiles[0] || null;
+  profileFormMode = 'edit';
   selectedProfileIdForEdit = profile?.id || '';
   if (profileEditId) profileEditId.value = selectedProfileIdForEdit;
   if (profileNameInput) profileNameInput.value = profile?.name || '';
   if (profileAvatarInput) profileAvatarInput.value = profile?.avatar || '';
   if (profileColorInput) profileColorInput.value = profile?.color || '#00ddff';
-  if (profileDeleteBtn) profileDeleteBtn.disabled = !profile || profile.isDefault;
   renderProfileManager();
+  updateProfileFormMode();
 }
 
 function renderProfileManager() {
   if (!profileManagerList) return;
-  const rows = getEditableProfiles().map(profile => `
-    <button class="profile-manager-row ${profile.id === selectedProfileIdForEdit ? 'active' : ''}" data-profile-edit="${escapeHtml(profile.id)}">
+  const rows = getManagedProfiles().map(profile => {
+    const locked = isProfileLocked(profile);
+    return `
+    <button class="profile-manager-row ${profile.id === selectedProfileIdForEdit ? 'active' : ''} ${locked ? 'locked' : ''}" data-profile-edit="${escapeHtml(profile.id)}">
       <span class="profile-avatar" style="--profile-color: ${escapeHtml(profile.color || '#00ddff')}">${escapeHtml(profile.avatar || 'P')}</span>
       <span class="profile-menu-meta">
         <span class="profile-manager-name">${escapeHtml(profile.name)}</span>
         <span class="profile-menu-desc">${escapeHtml(getProfileDescription(profile))}</span>
       </span>
-      <span class="profile-manager-badge">${profile.id === state.activeProfileId ? escapeHtml(getUiText('profile-current', 'Current')) : ''}</span>
+      <span class="profile-manager-badge">${locked ? escapeHtml(getUiText('profile-locked', 'Locked')) : (profile.id === state.activeProfileId ? escapeHtml(getUiText('profile-current', 'Current')) : '')}</span>
     </button>
-  `).join('');
+  `;
+  }).join('');
 
-  const guest = (state.profiles || []).find(profile => profile.isGuest);
-  const guestRow = guest ? `
-    <button class="profile-manager-row guest" data-profile-switch="${escapeHtml(guest.id)}">
-      <span class="profile-avatar" style="--profile-color: ${escapeHtml(guest.color || '#8b5cf6')}">${escapeHtml(guest.avatar || 'M')}</span>
-      <span class="profile-menu-meta">
-        <span class="profile-manager-name">${escapeHtml(guest.name)}</span>
-        <span class="profile-menu-desc">${escapeHtml(getProfileDescription(guest))}</span>
-      </span>
-      <span class="profile-manager-badge">${guest.id === state.activeProfileId ? escapeHtml(getUiText('profile-current', 'Current')) : ''}</span>
-    </button>
-  ` : '';
-
-  profileManagerList.innerHTML = rows + guestRow;
+  profileManagerList.innerHTML = rows;
   profileManagerList.querySelectorAll('[data-profile-edit]').forEach(button => {
     button.addEventListener('click', () => selectProfileForEditing(button.getAttribute('data-profile-edit')));
   });
-  profileManagerList.querySelectorAll('[data-profile-switch]').forEach(button => {
-    button.addEventListener('click', () => {
-      closeProfileManager();
-      switchProfile(button.getAttribute('data-profile-switch'));
-    });
-  });
+  updateProfileFormMode();
 }
 
-function openProfileManager() {
+async function openProfileManager() {
   if (!profileManagerModal) return;
   selectProfileForEditing(selectedProfileIdForEdit || state.activeProfileId || 'default');
-  profileManagerModal.classList.add('open');
-  window.dispatchEvent(new Event('resize'));
+  await openModalWithContentPreview(profileManagerModal);
 }
 
 function closeProfileManager() {
-  profileManagerModal?.classList.remove('open');
-  window.dispatchEvent(new Event('resize'));
+  if (profileFormMode === 'create') {
+    profileFormMode = 'edit';
+    selectedProfileIdForEdit = state.activeProfile?.id || 'default';
+  }
+  showProfileStatus('');
+  closeModalWithContentPreview(profileManagerModal);
 }
 
 function prepareNewProfileForm() {
+  const suggestedName = getNextProfileName();
   selectedProfileIdForEdit = '';
+  profileFormMode = 'create';
   if (profileEditId) profileEditId.value = '';
-  if (profileNameInput) profileNameInput.value = '';
-  if (profileAvatarInput) profileAvatarInput.value = '';
-  if (profileColorInput) profileColorInput.value = '#00ddff';
-  if (profileDeleteBtn) profileDeleteBtn.disabled = true;
+  if (profileNameInput) profileNameInput.value = suggestedName;
+  if (profileAvatarInput) profileAvatarInput.value = getProfileAvatarFromName(suggestedName);
+  if (profileColorInput) profileColorInput.value = profileColorChoices[getManagedProfiles().length % profileColorChoices.length];
+  updateProfileFormMode();
+  showProfileStatus(getUiText('profile-new-ready', 'Yeni profil bilgilerini girin.'), 'info');
   profileNameInput?.focus();
+  profileNameInput?.select();
   renderProfileManager();
 }
 
@@ -432,6 +599,7 @@ async function applyProfilePayload(payload, { restoreTabs = true } = {}) {
 
 function showProfileError(message) {
   console.warn(message);
+  showProfileStatus(message, 'error');
   if (!profileSelectorBtn) return;
   const previousTitle = profileSelectorBtn.title;
   profileSelectorBtn.title = message;
@@ -462,11 +630,15 @@ function hasActiveContentPreview() {
   return !!(contentArea?.classList.contains('content-preview-active') && preview?.getAttribute('src'));
 }
 
-function clearContentPreviewNow() {
+function cancelContentPreviewClearTimer() {
   if (contentPreviewClearTimer) {
     clearTimeout(contentPreviewClearTimer);
     contentPreviewClearTimer = null;
   }
+}
+
+function clearContentPreviewNow() {
+  cancelContentPreviewClearTimer();
 
   const contentArea = document.getElementById('content-area');
   document.getElementById('content-area-preview')?.remove();
@@ -640,7 +812,7 @@ export function sendBounds() {
   const isPermissionsOpen = document.getElementById('permissions-manager-modal')?.classList.contains('open');
   const isPasswordAuditOpen = document.getElementById('password-audit-modal')?.classList.contains('open');
   const isSecurityInfoOpen = document.getElementById('security-info-modal')?.classList.contains('open');
-  const isProfileManagerOpen = profileManagerModal?.classList.contains('open');
+  const isProfileManagerOpen = profileManagerModal?.classList.contains('open') && hasActiveContentPreview();
   const isSpaceOpen = document.getElementById('space-modal')?.classList.contains('open');
   const isSpaceDeleteOpen = document.getElementById('space-delete-modal')?.classList.contains('open');
   const isPermissionBarOpen = document.getElementById('permission-bar')?.style.display === 'flex';
@@ -649,6 +821,8 @@ export function sendBounds() {
   const tabContextMenu = document.getElementById('tab-context-menu');
   const isTabContextMenuOverContent = tabContextMenu?.style.display === 'block'
     && tabContextMenu.dataset.overlapsContent === 'true';
+  const isProfileMenuOverContent = profileSwitcher?.classList.contains('open')
+    && profileMenu?.dataset.overlapsContent === 'true';
   const isDropdownOpen = !!document.querySelector('.bookmarks-bar-dropdown');
 
   const autocompleteDropdown = document.getElementById('autocomplete-dropdown');
@@ -673,6 +847,7 @@ export function sendBounds() {
     isSpaceOpen ||
     isSpaceDeleteOpen ||
     isTabContextMenuOverContent ||
+    isProfileMenuOverContent ||
     isDropdownOpen ||
     isAutocompleteOverPreview ||
     isHistoryOpen ||
@@ -706,6 +881,7 @@ window.addEventListener('resize', () => {
   requestAnimationFrame(() => {
     positionAutocompleteDropdown();
     sendNewtabTopbarAutocomplete();
+    updateProfileMenuOverlapState();
     sendBounds();
   });
 });
@@ -726,7 +902,10 @@ if (sidebarToggle) {
     if (typeof renderSpaces === 'function') {
       renderSpaces();
     }
-    setTimeout(sendBounds, 350);
+    setTimeout(() => {
+      updateProfileMenuOverlapState();
+      sendBounds();
+    }, 350);
   });
 }
 
@@ -743,10 +922,18 @@ if (incognitoBtn) {
   });
 }
 
-profileSelectorBtn?.addEventListener('click', (event) => {
+profileSelectorBtn?.addEventListener('click', async (event) => {
   event.stopPropagation();
-  profileSwitcher?.classList.toggle('open');
+  const willOpen = !profileSwitcher?.classList.contains('open');
+  if (willOpen && sidebar?.classList.contains('collapsed')) {
+    await captureContentPreview();
+  }
+  profileSwitcher?.classList.toggle('open', willOpen);
   renderProfileMenu();
+  requestAnimationFrame(() => {
+    updateProfileMenuOverlapState();
+    sendBounds();
+  });
 });
 
 closeProfileManagerModal?.addEventListener('click', closeProfileManager);
@@ -757,15 +944,22 @@ profileManagerModal?.addEventListener('click', (event) => {
 profileNewBtn?.addEventListener('click', prepareNewProfileForm);
 
 profileSaveBtn?.addEventListener('click', async () => {
+  const id = profileFormMode === 'edit' ? (profileEditId?.value || '') : '';
+  const selectedProfile = id ? getSelectedManagedProfile() : null;
+  if (id && isProfileLocked(selectedProfile)) {
+    showProfileStatus(getProfileLockMessage(selectedProfile), 'info', { persist: true });
+    return;
+  }
+
   const name = profileNameInput?.value.trim() || '';
   if (!name) {
     profileNameInput?.focus();
+    showProfileStatus(getUiText('profile-name-required', 'Profil adı gerekli.'), 'error');
     return;
   }
 
   const avatar = (profileAvatarInput?.value.trim() || name.charAt(0) || 'P').slice(0, 2).toUpperCase();
   const color = profileColorInput?.value || '#00ddff';
-  const id = profileEditId?.value || '';
 
   try {
     if (!id) suppressNextProfileSwitchedEvent = true;
@@ -774,11 +968,18 @@ profileSaveBtn?.addEventListener('click', async () => {
       : await window.oslo.createProfile({ name, avatar, color });
     await applyProfilePayload(payload, { restoreTabs: !id });
     if (!id) setTimeout(() => { suppressNextProfileSwitchedEvent = false; }, 0);
+    let successMessage = '';
     if (id) {
       selectProfileForEditing(id);
+      successMessage = getUiText('profile-updated', 'Profil güncellendi.');
     } else {
-      closeProfileManager();
+      const createdId = payload?.activeProfileId || state.activeProfileId;
+      profileFormMode = 'edit';
+      selectProfileForEditing(createdId);
+      successMessage = getUiText('profile-created', 'Profil oluşturuldu.');
     }
+    closeProfileManager();
+    showProfileToast(successMessage);
   } catch (error) {
     suppressNextProfileSwitchedEvent = false;
     console.error('Failed to save profile:', error);
@@ -788,8 +989,11 @@ profileSaveBtn?.addEventListener('click', async () => {
 
 profileDeleteBtn?.addEventListener('click', async () => {
   const id = profileEditId?.value || '';
-  const profile = getEditableProfiles().find(item => item.id === id);
-  if (!profile || profile.isDefault) return;
+  const profile = getManagedProfiles().find(item => item.id === id);
+  if (!profile || isProfileLocked(profile)) {
+    showProfileStatus(getProfileLockMessage(profile), 'info', { persist: true });
+    return;
+  }
 
   const confirmText = (getUiText('profile-delete-confirm', 'Delete profile "{name}"? This cannot be undone.')).replace('{name}', profile.name);
   const confirmed = await showOsloConfirm(getUiText('profile-manager-title', 'Manage Profiles'), confirmText, { danger: true });
@@ -801,13 +1005,10 @@ profileDeleteBtn?.addEventListener('click', async () => {
     const payload = await window.oslo.deleteProfile(id);
     await applyProfilePayload(payload, { restoreTabs: wasActive });
     if (wasActive) setTimeout(() => { suppressNextProfileSwitchedEvent = false; }, 0);
-    if (!wasActive) {
-      normalizeProfilePayload(payload || {});
-      selectProfileForEditing('default');
-      renderProfiles();
-    } else {
-      closeProfileManager();
-    }
+    selectProfileForEditing(payload?.activeProfileId || 'default');
+    const successMessage = getUiText('profile-deleted', 'Profil silindi.');
+    closeProfileManager();
+    showProfileToast(successMessage);
   } catch (error) {
     suppressNextProfileSwitchedEvent = false;
     console.error('Failed to delete profile:', error);
@@ -817,7 +1018,10 @@ profileDeleteBtn?.addEventListener('click', async () => {
 
 document.addEventListener('click', (event) => {
   if (profileSwitcher && !profileSwitcher.contains(event.target)) {
-    profileSwitcher.classList.remove('open');
+    if (profileSwitcher.classList.contains('open')) {
+      profileSwitcher.classList.remove('open');
+      clearProfileMenuOverlap();
+    }
   }
 });
 
@@ -2498,6 +2702,7 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 
 // --- Update Modal & Check updates logic ---
+const OFFICIAL_DOWNLOAD_URL = 'https://www.browser.osloteam.net/download';
 const updateModal = document.getElementById('update-modal');
 const telemetryLogModal = document.getElementById('telemetry-log-modal');
 const getUpdateText = (key, fallback) => translations[state.currentLang]?.[key] || fallback;
@@ -2698,7 +2903,7 @@ document.getElementById('btn-confirm-update')?.addEventListener('click', () => {
   const version = (document.getElementById('update-modal-version')?.textContent || '1.0.0-beta.4').replace(/^v/, '');
 
   if (!url) {
-    window.oslo.openExternalLink('https://oslobrowser.com/download');
+    window.oslo.openExternalLink(OFFICIAL_DOWNLOAD_URL);
     closeUpdateModalFunc();
     return;
   }

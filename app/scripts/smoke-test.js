@@ -69,6 +69,13 @@ function checkSettingsSaveFlow() {
   expect('settings: renderer saves settings', settings.includes('window.oslo.setSetting'), 'settings renderer setSetting calls missing');
 }
 
+function checkAboutWebsiteLink() {
+  const settings = read('src/renderer/js/settings.js');
+  expect('about: visit website opens current OSLO site',
+    settings.includes("window.oslo.createTab({ url: 'https://www.browser.osloteam.net' })"),
+    'about website link does not point to www.browser.osloteam.net');
+}
+
 function checkAdvancedDownloads() {
   const main = read('src/main/main.js');
   const preload = read('src/preload.js');
@@ -194,6 +201,8 @@ function checkIncognitoNewTabFlow() {
   expect('incognito newtab: session restore skips private tabs', main.includes('.filter(tab => !tab.isIncognito'), 'incognito tabs are not excluded from session restore');
   expect('incognito newtab: content explains privacy boundaries', html.includes('notSavedTitle') && html.includes('visibleTitle') && html.includes('tipsTitle'), 'incognito privacy content missing');
   expect('incognito newtab: dark private theme exists', css.includes('--page-bg') && css.includes('.privacy-badge') && css.includes('.info-card'), 'incognito newtab theme missing');
+  expect('incognito newtab: compact layout exists', css.includes('grid-template-columns: minmax(0, 0.95fr) minmax(320px, 1.05fr)') && css.includes('grid-row: 1 / span 3') && css.includes('font-size: clamp(28px, 3.2vw, 44px)'), 'incognito compact layout missing');
+  expect('incognito newtab: scrollbar is themed', css.includes('scrollbar-color') && css.includes('html::-webkit-scrollbar-thumb') && css.includes('.incognito-topbar-autocomplete::-webkit-scrollbar-thumb'), 'incognito scrollbar theme missing');
   expect('incognito newtab: tr/en/fr translations exist', js.includes('tr:') && js.includes('en:') && js.includes('fr:'), 'incognito newtab translations missing');
   expect('incognito newtab: search box is functional', html.includes('incognito-search-form') && css.includes('.incognito-search') && js.includes('formatSearch') && js.includes('activeSearchEngine'), 'incognito newtab search box missing');
   expect('incognito newtab: topbar icons do not print raw SVG text', js.includes('topbarIconFor') && js.includes('${topbarIconFor(item.type)}') && !js.includes('item.icon || iconFor'), 'incognito autocomplete icon rendering can leak raw SVG text');
@@ -234,10 +243,56 @@ function checkProfileFlow() {
   expect('profiles: renderer profile selector and manager exist',
     indexHtml.includes('profile-selector-btn') &&
       indexHtml.includes('profile-manager-modal') &&
+      indexHtml.includes('profile-status-text') &&
       renderer.includes('renderProfileSelector') &&
       renderer.includes('applyProfilePayload') &&
       renderer.includes('loadProfileScopedData'),
     'profile UI flow missing');
+  expect('profiles: default and guest profiles are locked from editing',
+    main.includes("id === DEFAULT_PROFILE_ID || id === GUEST_PROFILE_ID") &&
+      renderer.includes('isProfileLocked') &&
+      renderer.includes('profile-default-locked') &&
+      renderer.includes('profile-guest-locked'),
+    'default or guest profile editing lock missing');
+  expect('profiles: create/edit form modes are separated',
+    renderer.includes("profileFormMode = 'create'") &&
+      renderer.includes("profileFormMode === 'edit'") &&
+      renderer.includes('profile-created') &&
+      renderer.includes('profile-updated'),
+    'profile create/edit mode separation missing');
+  expect('profiles: locked profiles are sorted before custom profiles',
+    renderer.includes('a.isDefault ? 0') &&
+      renderer.includes('a.isGuest ? 1 : 2') &&
+      renderer.includes('createdAt'),
+    'locked profile sorting is missing');
+  expect('profiles: profile menu uses sorted list and fits sidebar width',
+    renderer.includes('const profileRows = getManagedProfiles().map') &&
+      style.includes('.profile-menu') &&
+      style.includes('width: 100%') &&
+      style.includes('overflow-x: hidden'),
+    'profile menu sorting or fit styles missing');
+  expect('profiles: manager list scrollbar is themed',
+    style.includes('.profile-manager-list::-webkit-scrollbar-thumb') &&
+      style.includes('.profile-manager-list::-webkit-scrollbar-button') &&
+      style.includes('scrollbar-color: rgba(0, 221, 255, 0.58)'),
+    'profile manager scrollbar still uses the default platform style');
+  expect('profiles: collapsed profile menu avoids native view overlap',
+    renderer.includes('updateProfileMenuOverlapState') &&
+      renderer.includes('isProfileMenuOverContent') &&
+      renderer.includes("profileMenu?.dataset.overlapsContent === 'true'") &&
+      renderer.includes('await captureContentPreview()'),
+    'collapsed profile menu overlap guard missing');
+  expect('profiles: manager transition preserves content preview',
+    renderer.includes('cancelContentPreviewClearTimer') &&
+      renderer.includes('clearProfileMenuOverlap({ clearPreview: false })') &&
+      renderer.includes("clearPreview: !profileManagerModal?.classList.contains('open')"),
+    'profile manager transition can clear the content preview');
+  expect('profiles: successful save closes manager overlay',
+    renderer.includes('showProfileToast') &&
+      renderer.includes('closeProfileManager();') &&
+      renderer.includes("successMessage = getUiText('profile-created'") &&
+      renderer.includes("successMessage = getUiText('profile-updated'"),
+    'profile save success can leave manager overlay open');
   expect('profiles: renderer state tracks active profile',
     state.includes('profiles: []') && state.includes("activeProfileId: 'default'") && state.includes('activeProfile: null'),
     'profile state fields missing');
@@ -245,7 +300,7 @@ function checkProfileFlow() {
     style.includes('.profile-menu') && style.includes('z-index: var(--z-menu)') && style.includes('overflow: visible'),
     'profile menu layering styles missing');
   expect('profiles: translations exist for tr/en/fr',
-    i18n.includes("'profile-manager-title'") && i18n.includes("'profile-guest-desc'") && i18n.includes("'profile-delete-confirm'"),
+    i18n.includes("'profile-manager-title'") && i18n.includes("'profile-guest-desc'") && i18n.includes("'profile-delete-confirm'") && i18n.includes("'profile-create'") && i18n.includes("'profile-default-locked'"),
     'profile translations missing');
 }
 
@@ -287,6 +342,13 @@ function checkUpdateConnectivityFlow() {
       renderer.includes('window.oslo.getReleaseNotes') &&
       renderer.includes('showUpdateModal(info, { notesOnly: true })'),
     'release notes button still depends only on the update availability flow');
+  const oldOsloDomain = ['oslo', 'browser.com'].join('');
+  expect('updates: official download fallback uses current OSLO site',
+    main.includes("const OFFICIAL_DOWNLOAD_URL = `${OFFICIAL_WEBSITE_URL}/download`;") &&
+      renderer.includes("const OFFICIAL_DOWNLOAD_URL = 'https://www.browser.osloteam.net/download';") &&
+      !main.includes(oldOsloDomain) &&
+      !renderer.includes(oldOsloDomain),
+    'update/download flow still references the old OSLO domain');
 }
 
 function checkBuildConfig() {
@@ -322,6 +384,7 @@ function run() {
   checkStartupFiles();
   checkTabCreateFlow();
   checkSettingsSaveFlow();
+  checkAboutWebsiteLink();
   checkAdvancedDownloads();
   checkTaskManagerFlow();
   checkSiteSecurityPanel();
