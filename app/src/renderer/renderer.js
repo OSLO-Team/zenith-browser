@@ -2797,8 +2797,8 @@ function showUpdateModal(info, { notesOnly = false } = {}) {
   if (latestVersionChip) latestVersionChip.style.display = notesOnly ? 'none' : '';
   if (versionArrow) versionArrow.style.display = notesOnly ? 'none' : '';
 
-  if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.4'}`;
-  if (modalVersion) modalVersion.textContent = `v${info.latestVersion || info.currentVersion || '1.0.0-beta.4'}`;
+  if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.5'}`;
+  if (modalVersion) modalVersion.textContent = `v${info.latestVersion || info.currentVersion || '1.0.0-beta.5'}`;
   if (modalNotes) {
     modalNotes.innerHTML = releaseNotes
       ? parseMarkdown(releaseNotes)
@@ -2843,7 +2843,7 @@ document.getElementById('btn-check-updates')?.addEventListener('click', () => {
       const modalVersion = document.getElementById('update-modal-version');
       const modalNotes = document.getElementById('update-modal-notes');
 
-      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.4'}`;
+      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.5'}`;
       if (modalVersion) modalVersion.textContent = `v${info.latestVersion}`;
       if (modalNotes) modalNotes.innerHTML = parseMarkdown(info.releaseNotes);
 
@@ -2900,7 +2900,7 @@ document.getElementById('btn-confirm-update')?.addEventListener('click', () => {
   const url = updateModal?.dataset.downloadUrl;
   const checksum = updateModal?.dataset.checksum || updateModal?.dataset.sha256 || '';
   const checksumAlgorithm = updateModal?.dataset.checksumAlgorithm || (checksum.length === 128 ? 'sha512' : 'sha256');
-  const version = (document.getElementById('update-modal-version')?.textContent || '1.0.0-beta.4').replace(/^v/, '');
+  const version = (document.getElementById('update-modal-version')?.textContent || '1.0.0-beta.5').replace(/^v/, '');
 
   if (!url) {
     window.oslo.openExternalLink(OFFICIAL_DOWNLOAD_URL);
@@ -2987,7 +2987,7 @@ function autoCheckForUpdates() {
       const modalVersion = document.getElementById('update-modal-version');
       const modalNotes = document.getElementById('update-modal-notes');
 
-      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.4'}`;
+      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.5'}`;
       if (modalVersion) modalVersion.textContent = `v${info.latestVersion}`;
       if (modalNotes) modalNotes.innerHTML = parseMarkdown(info.releaseNotes);
 
@@ -3037,7 +3037,7 @@ function buildTelemetryReport(logs, systemInfo = {}, options = {}) {
   const allCrashes = getTelemetryArray(logs, 'crashes');
   const payload = {
     generatedAt: new Date().toISOString(),
-    appVersion: systemInfo?.appVersion || '1.0.0-beta.4',
+    appVersion: systemInfo?.appVersion || '1.0.0-beta.5',
     electron: systemInfo?.electron || '',
     chrome: systemInfo?.chrome || '',
     platform: navigator.platform || '',
@@ -3064,7 +3064,7 @@ function buildTelemetryIssueBody(logs, systemInfo = {}, copiedToClipboard = fals
   return [
     '## OSLO Browser Telemetry Report',
     '',
-    `Version: ${systemInfo?.appVersion || '1.0.0-beta.4'}`,
+    `Version: ${systemInfo?.appVersion || '1.0.0-beta.5'}`,
     `Generated at: ${new Date().toISOString()}`,
     `Events: ${allEvents.length}`,
     `Crashes/errors: ${allCrashes.length}`,
