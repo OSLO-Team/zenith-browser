@@ -1,24 +1,24 @@
 {
-  "name": "oslo-browser",
+  "name": "zenith-browser",
   "version": "1.0.0.alpha.01",
-  "description": "OSLO Browser - Elegant Electron-based Custom Web Browser",
+  "description": "Zenith Browser - Elegant Electron-based Custom Web Browser",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --win --publish never && node scripts/write-checksums.js",
+    "build": "electron-builder --win --linux --publish never && node scripts/write-checksums.js",
     "smoke": "node scripts/smoke-test.js",
     "test": "npm run smoke"
   },
   "keywords": [
     "browser",
     "electron",
-    "oslo"
+    "zenith"
   ],
   "author": "OSLO Team",
   "license": "ISC",
   "build": {
-    "appId": "com.oslo.browser",
-    "productName": "OSLO Browser",
+    "appId": "com.zenith.browser",
+    "productName": "Zenith Browser",
     "buildVersion": "1.0.0.alpha.01",
     "buildNumber": "1005",
     "directories": {
@@ -44,18 +44,25 @@
         {
           "provider": "github",
           "owner": "OSLO-Team",
-          "repo": "oslo-browser"
+          "repo": "zenith-browser"
         }
       ]
     },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "assets/icons"
+    },
     "nsis": {
-      "artifactName": "OSLO-Browser-v${version}-Setup.exe",
+      "artifactName": "Zenith-Browser-v${version}-Setup.exe",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "OSLO Browser"
+      "shortcutName": "Zenith Browser"
     }
   },
   "devDependencies": {
