@@ -1,10 +1,10 @@
-# OSLO Browser
+# Zenith Browser
 
 **Modern browsing. Privacy first.**
 
-OSLO Browser is a modern desktop web browser developed by **OSLO Team**.
+Zenith Browser is a modern desktop web browser developed by **OSLO Team**.
 
-Built around **privacy**, **performance**, **security**, and **customization**, OSLO Browser delivers a powerful browsing experience with a clean interface, advanced browser functionality, and a compact user experience.
+Built around **privacy**, **performance**, **security**, and **customization**, Zenith Browser delivers a powerful browsing experience with a clean interface, advanced browser functionality, and a compact user experience.
 
 Designed for users who value **control**, **speed**, and **privacy-focused browsing**.
 
@@ -22,8 +22,8 @@ Designed for users who value **control**, **speed**, and **privacy-focused brows
 ## Development
 
 ```bash
-git clone https://github.com/OSLO-Team/oslo-browser.git
-cd oslo-browser
+git clone https://github.com/OSLO-Team/zenith-browser.git
+cd zenith-browser
 npm install
 npm start
 ```
