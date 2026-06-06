@@ -1122,7 +1122,31 @@ function isProfileInput(value, requireId = false) {
   if (value.name !== undefined && !asString(value.name, 48)) return false;
   if (value.avatar !== undefined && !asString(value.avatar, 4)) return false;
   if (value.color !== undefined && !/^#[0-9a-f]{6}$/i.test(String(value.color))) return false;
+  if (value.template !== undefined && !/^[a-z-]{2,32}$/i.test(String(value.template))) return false;
   return true;
+}
+
+function isProfileSwitchPayload(value) {
+  return !!value &&
+    typeof value === 'object' &&
+    isProfileId(value.profileId) &&
+    (value.pin === undefined || asString(value.pin, 16) !== null);
+}
+
+function isProfilePinPayload(value) {
+  return !!value &&
+    typeof value === 'object' &&
+    isProfileId(value.profileId) &&
+    /^\d{4,8}$/.test(String(value.pin || ''));
+}
+
+function isProfileClearPayload(value) {
+  const allowedCategories = new Set(['history', 'downloads', 'bookmarks', 'passwords', 'permissions', 'sessions', 'settings', 'cache', 'cookies', 'siteData']);
+  return !!value &&
+    typeof value === 'object' &&
+    isProfileId(value.profileId) &&
+    Array.isArray(value.categories) &&
+    value.categories.every(category => allowedCategories.has(category));
 }
 
 function safeSend(channel, validator, payload) {
@@ -1185,7 +1209,11 @@ const osloApi = {
   createProfile: (profile) => safeInvoke('profiles-create', (value) => isProfileInput(value), profile),
   updateProfile: (profile) => safeInvoke('profiles-update', (value) => isProfileInput(value, true), profile),
   deleteProfile: (profileId) => safeInvoke('profiles-delete', isProfileId, profileId),
-  switchProfile: (profileId) => safeInvoke('profiles-switch', isProfileId, profileId),
+  switchProfile: (profileId, pin = '') => safeInvoke('profiles-switch', isProfileSwitchPayload, { profileId, pin }),
+  getProfileHealth: (profileId) => safeInvoke('profiles-health-get', isProfileId, profileId),
+  clearProfileData: (profileId, categories = []) => safeInvoke('profiles-clear-data', isProfileClearPayload, { profileId, categories }),
+  setProfilePin: (profileId, pin) => safeInvoke('profiles-pin-set', isProfilePinPayload, { profileId, pin }),
+  clearProfilePin: (profileId, pin) => safeInvoke('profiles-pin-clear', isProfilePinPayload, { profileId, pin }),
   onProfileSwitched: (callback) => {
     const listener = (event, data) => callback(data);
     ipcRenderer.on('ui-profile-switched', listener);

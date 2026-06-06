@@ -4,7 +4,7 @@ import { applyLanguage, translations } from './js/i18n.js';
 import { renderTabs, updateBookmarkIcon } from './js/tabs.js';
 import { initPanels, renderBookmarks, renderBookmarksBar, renderHistory, renderDownloads } from './js/panels.js';
 import { initSettings, syncContentAreaSurface, applySettingChange } from './js/settings.js';
-import { installNativeAlertBridge, showOsloConfirm } from './js/modal-dialogs.js';
+import { installNativeAlertBridge, showOsloAlert, showOsloConfirm, showOsloPrompt } from './js/modal-dialogs.js';
 
 installNativeAlertBridge('OSLO Browser');
 
@@ -89,6 +89,7 @@ const profileEditId = document.getElementById('profile-edit-id');
 const profileNameInput = document.getElementById('profile-name-input');
 const profileAvatarInput = document.getElementById('profile-avatar-input');
 const profileColorInput = document.getElementById('profile-color-input');
+const profileTemplateInput = document.getElementById('profile-template-input');
 const profileNewBtn = document.getElementById('profile-new-btn');
 const profileSaveBtn = document.getElementById('profile-save-btn');
 const profileDeleteBtn = document.getElementById('profile-delete-btn');
@@ -116,9 +117,72 @@ let profileFormMode = 'edit';
 let suppressNextProfileSwitchedEvent = false;
 let profileStatusTimer = null;
 const profileColorChoices = ['#00ddff', '#8b5cf6', '#22c55e', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6'];
+const profileTemplateDefaults = {
+  personal: { nameKey: 'profile-template-personal', fallback: 'Kişisel', avatar: 'K', color: '#00ddff' },
+  work: { nameKey: 'profile-template-work', fallback: 'İş', avatar: 'İ', color: '#38bdf8' },
+  school: { nameKey: 'profile-template-school', fallback: 'Okul', avatar: 'O', color: '#22c55e' },
+  developer: { nameKey: 'profile-template-developer', fallback: 'Geliştirici', avatar: 'D', color: '#f59e0b' },
+  privacy: { nameKey: 'profile-template-privacy', fallback: 'Gizlilik', avatar: 'G', color: '#a855f7' }
+};
 
 function getUiText(key, fallback) {
   return translations[state.currentLang]?.[key] || translations.tr?.[key] || fallback;
+}
+
+function getProfileTemplateName(templateId) {
+  const template = profileTemplateDefaults[templateId] || profileTemplateDefaults.personal;
+  return getUiText(template.nameKey, template.fallback);
+}
+
+function getTemplateNameVariants(templateId) {
+  const template = profileTemplateDefaults[templateId];
+  if (!template) return [];
+  const variants = new Set([template.fallback]);
+  Object.values(translations).forEach(dictionary => {
+    const value = dictionary?.[template.nameKey];
+    if (value) variants.add(value);
+  });
+  return [...variants].filter(Boolean);
+}
+
+function getTemplateGeneratedNameSuffix(profile) {
+  if (!profile?.template || !profileTemplateDefaults[profile.template]) return null;
+  const rawName = String(profile.name || '').trim();
+  if (!rawName) return null;
+  const rawNameLower = rawName.toLocaleLowerCase();
+
+  for (const variant of getTemplateNameVariants(profile.template)) {
+    const baseName = String(variant || '').trim();
+    if (!baseName) continue;
+
+    const baseNameLower = baseName.toLocaleLowerCase();
+    if (rawNameLower === baseNameLower) return '';
+    if (rawNameLower.startsWith(`${baseNameLower} `)) {
+      const suffix = rawName.slice(baseName.length).trim();
+      if (/^\d+$/.test(suffix)) return suffix;
+    }
+  }
+  return null;
+}
+
+function getProfileDisplayName(profile) {
+  if (!profile) return getUiText('profile', 'Profil');
+  if (profile.isGuest) return getUiText('profile-template-guest', 'Misafir');
+  if (profile.isDefault) return getProfileTemplateName('personal');
+  const generatedSuffix = getTemplateGeneratedNameSuffix(profile);
+  if (generatedSuffix !== null) {
+    const templateName = getProfileTemplateName(profile.template);
+    return generatedSuffix ? `${templateName} ${generatedSuffix}` : templateName;
+  }
+  return profile.name || getUiText('profile', 'Profil');
+}
+
+function getProfileDisplayAvatar(profile) {
+  if (!profile) return 'P';
+  if (profile.isDefault || profile.isGuest) {
+    return getProfileDisplayName(profile).trim().charAt(0).toUpperCase() || (profile.avatar || 'P');
+  }
+  return profile.avatar || (profile.name || 'P').charAt(0).toUpperCase();
 }
 
 function normalizeProfilePayload(payload = {}) {
@@ -131,6 +195,10 @@ function normalizeProfilePayload(payload = {}) {
     color: /^#[0-9a-f]{6}$/i.test(String(profile.color || '')) ? profile.color : '#00ddff',
     isDefault: !!profile.isDefault,
     isGuest: !!profile.isGuest,
+    template: String(profile.template || (profile.isGuest ? 'guest' : 'personal')),
+    pinEnabled: !!profile.pinEnabled || !!profile.hasPin,
+    hasPin: !!profile.hasPin || !!profile.pinEnabled,
+    lastCleanedAt: Number(profile.lastCleanedAt) || 0,
     createdAt: Number(profile.createdAt) || 0,
     updatedAt: Number(profile.updatedAt) || 0
   })).filter(profile => profile.id);
@@ -166,7 +234,7 @@ function getManagedProfiles() {
       if (createdA !== createdB) return createdA - createdB;
     }
 
-    return String(a.name || '').localeCompare(String(b.name || ''), state.currentLang || 'tr');
+    return getProfileDisplayName(a).localeCompare(getProfileDisplayName(b), state.currentLang || 'tr');
   });
 }
 
@@ -192,9 +260,13 @@ function getProfileAvatarFromName(name) {
   return (String(name || '').trim().charAt(0) || 'P').slice(0, 2).toUpperCase();
 }
 
-function getNextProfileName() {
-  const baseName = getUiText('profile-default-new-name', 'Yeni Profil');
-  const usedNames = new Set(getManagedProfiles().map(profile => String(profile.name || '').trim().toLocaleLowerCase()));
+function getNextProfileName(templateId = profileTemplateInput?.value || 'personal', excludeProfileId = '') {
+  const baseName = profileTemplateDefaults[templateId]
+    ? getProfileTemplateName(templateId)
+    : getUiText('profile-default-new-name', 'Yeni Profil');
+  const usedNames = new Set(getManagedProfiles()
+    .filter(profile => profile.id !== excludeProfileId)
+    .map(profile => String(getProfileDisplayName(profile) || profile.name || '').trim().toLocaleLowerCase()));
   for (let index = 1; index < 1000; index += 1) {
     const candidate = index === 1 ? baseName : `${baseName} ${index}`;
     if (!usedNames.has(candidate.toLocaleLowerCase())) return candidate;
@@ -202,8 +274,20 @@ function getNextProfileName() {
   return `${baseName} ${Date.now().toString(36).slice(-4)}`;
 }
 
+function applyProfileTemplateSuggestion(templateId, { forceName = false, excludeProfileId = '' } = {}) {
+  const template = profileTemplateDefaults[templateId] || profileTemplateDefaults.personal;
+  const suggestedName = getNextProfileName(templateId, excludeProfileId);
+  if (profileNameInput && (forceName || !profileNameInput.value.trim())) {
+    profileNameInput.value = suggestedName;
+  }
+  if (profileAvatarInput && (forceName || !profileAvatarInput.value.trim())) {
+    profileAvatarInput.value = template.avatar;
+  }
+  if (profileColorInput) profileColorInput.value = template.color;
+}
+
 function setProfileFormDisabled(disabled) {
-  [profileNameInput, profileAvatarInput, profileColorInput].forEach(input => {
+  [profileNameInput, profileAvatarInput, profileColorInput, profileTemplateInput].forEach(input => {
     if (input) input.disabled = disabled;
   });
 }
@@ -286,21 +370,25 @@ function updateProfileFormMode() {
 function renderProfileSelector() {
   if (!profileSelectorBtn || !profileSelectorAvatar || !profileSelectorName) return;
   const profile = state.activeProfile || state.profiles[0] || { name: getUiText('profile', 'Profil'), avatar: 'P', color: '#00ddff' };
-  profileSelectorAvatar.textContent = profile.avatar || (profile.name || 'P').charAt(0).toUpperCase();
+  const displayName = getProfileDisplayName(profile);
+  profileSelectorAvatar.textContent = getProfileDisplayAvatar(profile);
   profileSelectorAvatar.style.setProperty('--profile-color', profile.color || '#00ddff');
-  profileSelectorName.textContent = profile.name || getUiText('profile', 'Profil');
-  profileSelectorBtn.title = `${getUiText('profile', 'Profil')}: ${profile.name || ''}`;
+  profileSelectorName.textContent = displayName;
+  profileSelectorBtn.title = `${getUiText('profile', 'Profil')}: ${displayName}`;
+  document.body.style.setProperty('--active-profile-color', profile.color || 'var(--accent-color)');
+  document.body.classList.toggle('profile-theme-line', !!profile.color);
 }
 
 function renderProfileMenu() {
   if (!profileMenu) return;
   const profileRows = getManagedProfiles().map(profile => {
     const isActive = profile.id === state.activeProfileId;
+    const displayName = getProfileDisplayName(profile);
     return `
       <button class="profile-menu-item ${isActive ? 'active' : ''}" data-profile-switch="${escapeHtml(profile.id)}">
-        <span class="profile-avatar" style="--profile-color: ${escapeHtml(profile.color || '#00ddff')}">${escapeHtml(profile.avatar || 'P')}</span>
+        <span class="profile-avatar" style="--profile-color: ${escapeHtml(profile.color || '#00ddff')}">${escapeHtml(getProfileDisplayAvatar(profile))}</span>
         <span class="profile-menu-meta">
-          <span class="profile-menu-name">${escapeHtml(profile.name)}</span>
+          <span class="profile-menu-name">${escapeHtml(displayName)}</span>
           <span class="profile-menu-desc">${escapeHtml(getProfileDescription(profile))}</span>
         </span>
         <span class="profile-menu-check">${isActive ? '✓' : ''}</span>
@@ -322,9 +410,12 @@ function renderProfileMenu() {
 
   profileMenu.querySelectorAll('[data-profile-switch]').forEach(button => {
     button.addEventListener('click', () => {
+      const targetProfileId = button.getAttribute('data-profile-switch');
+      const targetProfile = state.profiles.find(profile => profile.id === targetProfileId);
+      const needsPin = !!(targetProfile?.pinEnabled || targetProfile?.hasPin);
       profileSwitcher?.classList.remove('open');
-      clearProfileMenuOverlap();
-      switchProfile(button.getAttribute('data-profile-switch'));
+      clearProfileMenuOverlap({ clearPreview: !needsPin });
+      switchProfile(targetProfileId);
     });
   });
   profileMenu.querySelector('#profile-menu-manage')?.addEventListener('click', () => {
@@ -369,19 +460,25 @@ function renderProfiles() {
   renderProfileSelector();
   renderProfileMenu();
   renderProfileManager();
+  window.dispatchEvent(new CustomEvent('oslo-profiles-rendered', {
+    detail: { profiles: state.profiles, activeProfileId: state.activeProfileId }
+  }));
 }
 
 window.renderProfiles = renderProfiles;
+window.openProfileManager = openProfileManager;
 
 function selectProfileForEditing(profileId) {
   const managedProfiles = getManagedProfiles();
   const profile = managedProfiles.find(item => item.id === profileId) || managedProfiles[0] || null;
+  const locked = isProfileLocked(profile);
   profileFormMode = 'edit';
   selectedProfileIdForEdit = profile?.id || '';
   if (profileEditId) profileEditId.value = selectedProfileIdForEdit;
-  if (profileNameInput) profileNameInput.value = profile?.name || '';
-  if (profileAvatarInput) profileAvatarInput.value = profile?.avatar || '';
+  if (profileNameInput) profileNameInput.value = getProfileDisplayName(profile);
+  if (profileAvatarInput) profileAvatarInput.value = locked ? getProfileDisplayAvatar(profile) : (profile?.avatar || '');
   if (profileColorInput) profileColorInput.value = profile?.color || '#00ddff';
+  if (profileTemplateInput) profileTemplateInput.value = profile?.template || 'personal';
   renderProfileManager();
   updateProfileFormMode();
 }
@@ -390,11 +487,12 @@ function renderProfileManager() {
   if (!profileManagerList) return;
   const rows = getManagedProfiles().map(profile => {
     const locked = isProfileLocked(profile);
+    const displayName = getProfileDisplayName(profile);
     return `
     <button class="profile-manager-row ${profile.id === selectedProfileIdForEdit ? 'active' : ''} ${locked ? 'locked' : ''}" data-profile-edit="${escapeHtml(profile.id)}">
-      <span class="profile-avatar" style="--profile-color: ${escapeHtml(profile.color || '#00ddff')}">${escapeHtml(profile.avatar || 'P')}</span>
+      <span class="profile-avatar" style="--profile-color: ${escapeHtml(profile.color || '#00ddff')}">${escapeHtml(getProfileDisplayAvatar(profile))}</span>
       <span class="profile-menu-meta">
-        <span class="profile-manager-name">${escapeHtml(profile.name)}</span>
+        <span class="profile-manager-name">${escapeHtml(displayName)}</span>
         <span class="profile-menu-desc">${escapeHtml(getProfileDescription(profile))}</span>
       </span>
       <span class="profile-manager-badge">${locked ? escapeHtml(getUiText('profile-locked', 'Locked')) : (profile.id === state.activeProfileId ? escapeHtml(getUiText('profile-current', 'Current')) : '')}</span>
@@ -409,9 +507,26 @@ function renderProfileManager() {
   updateProfileFormMode();
 }
 
-async function openProfileManager() {
+function isSettingsOverlayOpen() {
+  return settingsOverlay?.classList.contains('open');
+}
+
+function openModalAboveSettings(modal) {
+  if (!modal) return;
+  cancelContentPreviewClearTimer();
+  modal.dataset.directOverlay = 'true';
+  modal.classList.add('open');
+  sendBounds();
+}
+
+async function openProfileManager(options = {}) {
   if (!profileManagerModal) return;
   selectProfileForEditing(selectedProfileIdForEdit || state.activeProfileId || 'default');
+  if (options.fromSettings || isSettingsOverlayOpen()) {
+    openModalAboveSettings(profileManagerModal);
+    return;
+  }
+  delete profileManagerModal.dataset.directOverlay;
   await openModalWithContentPreview(profileManagerModal);
 }
 
@@ -421,17 +536,24 @@ function closeProfileManager() {
     selectedProfileIdForEdit = state.activeProfile?.id || 'default';
   }
   showProfileStatus('');
+  if (profileManagerModal?.dataset.directOverlay === 'true') {
+    profileManagerModal.classList.remove('open');
+    delete profileManagerModal.dataset.directOverlay;
+    sendBounds();
+    return;
+  }
   closeModalWithContentPreview(profileManagerModal);
 }
 
 function prepareNewProfileForm() {
-  const suggestedName = getNextProfileName();
   selectedProfileIdForEdit = '';
   profileFormMode = 'create';
+  if (profileTemplateInput) profileTemplateInput.value = 'personal';
+  const suggestedName = getNextProfileName('personal');
   if (profileEditId) profileEditId.value = '';
   if (profileNameInput) profileNameInput.value = suggestedName;
   if (profileAvatarInput) profileAvatarInput.value = getProfileAvatarFromName(suggestedName);
-  if (profileColorInput) profileColorInput.value = profileColorChoices[getManagedProfiles().length % profileColorChoices.length];
+  if (profileColorInput) profileColorInput.value = profileTemplateDefaults.personal.color || profileColorChoices[getManagedProfiles().length % profileColorChoices.length];
   updateProfileFormMode();
   showProfileStatus(getUiText('profile-new-ready', 'Yeni profil bilgilerini girin.'), 'info');
   profileNameInput?.focus();
@@ -613,14 +735,36 @@ function showProfileError(message) {
 async function switchProfile(profileId) {
   if (!profileId || profileId === state.activeProfileId || typeof window.oslo.switchProfile !== 'function') return;
   try {
+    const targetProfile = state.profiles.find(profile => profile.id === profileId);
+    let pin = '';
+    if (targetProfile?.pinEnabled || targetProfile?.hasPin) {
+      const enteredPin = await showOsloPrompt(
+        getUiText('profile-pin-unlock-title', 'Profil Kilidi'),
+        getUiText('profile-pin-unlock-desc', 'Bu profile geçmek için PIN girin.'),
+        {
+          type: 'password',
+          maxLength: 8,
+          placeholder: '••••',
+          confirmText: getUiText('profile-pin-unlock-action', 'Kilidi Aç')
+        }
+      );
+      if (!enteredPin) return;
+      pin = enteredPin;
+    }
     suppressNextProfileSwitchedEvent = true;
-    const payload = await window.oslo.switchProfile(profileId);
+    const payload = await window.oslo.switchProfile(profileId, pin);
     await applyProfilePayload(payload, { restoreTabs: true });
     setTimeout(() => { suppressNextProfileSwitchedEvent = false; }, 0);
   } catch (error) {
     suppressNextProfileSwitchedEvent = false;
     console.error('Failed to switch profile:', error);
-    showProfileError(getUiText('profile-switch-failed', 'Profile could not be switched.'));
+    const isPinError = /pin/i.test(String(error?.message || error || ''));
+    const title = getUiText(isPinError ? 'profile-pin-unlock-title' : 'profile', isPinError ? 'Profil Kilidi' : 'Profil');
+    const message = isPinError
+      ? getUiText('profile-pin-wrong', 'PIN doğrulanamadı.')
+      : getUiText('profile-switch-failed', 'Profile could not be switched.');
+    showProfileError(message);
+    await showOsloAlert(title, message);
   }
 }
 
@@ -812,7 +956,7 @@ export function sendBounds() {
   const isPermissionsOpen = document.getElementById('permissions-manager-modal')?.classList.contains('open');
   const isPasswordAuditOpen = document.getElementById('password-audit-modal')?.classList.contains('open');
   const isSecurityInfoOpen = document.getElementById('security-info-modal')?.classList.contains('open');
-  const isProfileManagerOpen = profileManagerModal?.classList.contains('open') && hasActiveContentPreview();
+  const isProfileManagerOpen = profileManagerModal?.classList.contains('open');
   const isSpaceOpen = document.getElementById('space-modal')?.classList.contains('open');
   const isSpaceDeleteOpen = document.getElementById('space-delete-modal')?.classList.contains('open');
   const isPermissionBarOpen = document.getElementById('permission-bar')?.style.display === 'flex';
@@ -833,6 +977,7 @@ export function sendBounds() {
   const isSettingsOpen = document.getElementById('settings-overlay')?.classList.contains('open');
   const isDownloadsOpen = document.getElementById('downloads-overlay')?.classList.contains('open');
   const isBookmarksSuccessModalOpen = !!document.querySelector('.bookmarks-success-modal-overlay.open');
+  const isRuntimeDialogOpen = !!document.querySelector('.oslo-runtime-dialog.open');
   if (
     isClearHistoryOpen ||
     isClearBrowserDataOpen ||
@@ -853,7 +998,8 @@ export function sendBounds() {
     isHistoryOpen ||
     isSettingsOpen ||
     isDownloadsOpen ||
-    isBookmarksSuccessModalOpen
+    isBookmarksSuccessModalOpen ||
+    isRuntimeDialogOpen
   ) {
     window.oslo.updateBounds({ x: 0, y: 0, width: 0, height: 0 });
     return;
@@ -943,6 +1089,15 @@ profileManagerModal?.addEventListener('click', (event) => {
 
 profileNewBtn?.addEventListener('click', prepareNewProfileForm);
 
+profileTemplateInput?.addEventListener('change', () => {
+  const selectedProfile = getSelectedManagedProfile();
+  if (profileFormMode === 'edit' && isProfileLocked(selectedProfile)) return;
+  applyProfileTemplateSuggestion(profileTemplateInput.value, {
+    forceName: true,
+    excludeProfileId: profileFormMode === 'edit' ? selectedProfileIdForEdit : ''
+  });
+});
+
 profileSaveBtn?.addEventListener('click', async () => {
   const id = profileFormMode === 'edit' ? (profileEditId?.value || '') : '';
   const selectedProfile = id ? getSelectedManagedProfile() : null;
@@ -960,12 +1115,13 @@ profileSaveBtn?.addEventListener('click', async () => {
 
   const avatar = (profileAvatarInput?.value.trim() || name.charAt(0) || 'P').slice(0, 2).toUpperCase();
   const color = profileColorInput?.value || '#00ddff';
+  const template = profileTemplateInput?.value || 'personal';
 
   try {
     if (!id) suppressNextProfileSwitchedEvent = true;
     const payload = id
-      ? await window.oslo.updateProfile({ id, name, avatar, color })
-      : await window.oslo.createProfile({ name, avatar, color });
+      ? await window.oslo.updateProfile({ id, name, avatar, color, template })
+      : await window.oslo.createProfile({ name, avatar, color, template });
     await applyProfilePayload(payload, { restoreTabs: !id });
     if (!id) setTimeout(() => { suppressNextProfileSwitchedEvent = false; }, 0);
     let successMessage = '';
@@ -995,7 +1151,7 @@ profileDeleteBtn?.addEventListener('click', async () => {
     return;
   }
 
-  const confirmText = (getUiText('profile-delete-confirm', 'Delete profile "{name}"? This cannot be undone.')).replace('{name}', profile.name);
+  const confirmText = (getUiText('profile-delete-confirm', 'Delete profile "{name}"? This cannot be undone.')).replace('{name}', getProfileDisplayName(profile));
   const confirmed = await showOsloConfirm(getUiText('profile-manager-title', 'Manage Profiles'), confirmText, { danger: true });
   if (!confirmed) return;
 
@@ -2797,8 +2953,8 @@ function showUpdateModal(info, { notesOnly = false } = {}) {
   if (latestVersionChip) latestVersionChip.style.display = notesOnly ? 'none' : '';
   if (versionArrow) versionArrow.style.display = notesOnly ? 'none' : '';
 
-  if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.5'}`;
-  if (modalVersion) modalVersion.textContent = `v${info.latestVersion || info.currentVersion || '1.0.0-beta.5'}`;
+  if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0.alpha.01'}`;
+  if (modalVersion) modalVersion.textContent = `v${info.latestVersion || info.currentVersion || '1.0.0.alpha.01'}`;
   if (modalNotes) {
     modalNotes.innerHTML = releaseNotes
       ? parseMarkdown(releaseNotes)
@@ -2843,7 +2999,7 @@ document.getElementById('btn-check-updates')?.addEventListener('click', () => {
       const modalVersion = document.getElementById('update-modal-version');
       const modalNotes = document.getElementById('update-modal-notes');
 
-      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.5'}`;
+      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0.alpha.01'}`;
       if (modalVersion) modalVersion.textContent = `v${info.latestVersion}`;
       if (modalNotes) modalNotes.innerHTML = parseMarkdown(info.releaseNotes);
 
@@ -2900,7 +3056,7 @@ document.getElementById('btn-confirm-update')?.addEventListener('click', () => {
   const url = updateModal?.dataset.downloadUrl;
   const checksum = updateModal?.dataset.checksum || updateModal?.dataset.sha256 || '';
   const checksumAlgorithm = updateModal?.dataset.checksumAlgorithm || (checksum.length === 128 ? 'sha512' : 'sha256');
-  const version = (document.getElementById('update-modal-version')?.textContent || '1.0.0-beta.5').replace(/^v/, '');
+  const version = (document.getElementById('update-modal-version')?.textContent || '1.0.0.alpha.01').replace(/^v/, '');
 
   if (!url) {
     window.oslo.openExternalLink(OFFICIAL_DOWNLOAD_URL);
@@ -2987,7 +3143,7 @@ function autoCheckForUpdates() {
       const modalVersion = document.getElementById('update-modal-version');
       const modalNotes = document.getElementById('update-modal-notes');
 
-      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0-beta.5'}`;
+      if (currentVersion) currentVersion.textContent = `v${info.currentVersion || '1.0.0.alpha.01'}`;
       if (modalVersion) modalVersion.textContent = `v${info.latestVersion}`;
       if (modalNotes) modalNotes.innerHTML = parseMarkdown(info.releaseNotes);
 
@@ -3037,7 +3193,7 @@ function buildTelemetryReport(logs, systemInfo = {}, options = {}) {
   const allCrashes = getTelemetryArray(logs, 'crashes');
   const payload = {
     generatedAt: new Date().toISOString(),
-    appVersion: systemInfo?.appVersion || '1.0.0-beta.5',
+    appVersion: systemInfo?.appVersion || '1.0.0.alpha.01',
     electron: systemInfo?.electron || '',
     chrome: systemInfo?.chrome || '',
     platform: navigator.platform || '',
@@ -3064,7 +3220,7 @@ function buildTelemetryIssueBody(logs, systemInfo = {}, copiedToClipboard = fals
   return [
     '## OSLO Browser Telemetry Report',
     '',
-    `Version: ${systemInfo?.appVersion || '1.0.0-beta.5'}`,
+    `Version: ${systemInfo?.appVersion || '1.0.0.alpha.01'}`,
     `Generated at: ${new Date().toISOString()}`,
     `Events: ${allEvents.length}`,
     `Crashes/errors: ${allCrashes.length}`,

@@ -216,7 +216,9 @@ function checkProfileFlow() {
   const indexHtml = read('src/renderer/index.html');
   const state = read('src/renderer/js/state.js');
   const style = read('src/renderer/style.css');
+  const settings = read('src/renderer/js/settings.js');
   const i18n = read('src/renderer/js/i18n.js');
+  const modalDialogs = read('src/renderer/js/modal-dialogs.js');
 
   expect('profiles: profile store defaults exist',
     main.includes('PROFILE_STORE_DEFAULTS') &&
@@ -238,7 +240,7 @@ function checkProfileFlow() {
       main.includes('filteredTabOrders'),
     'tab profile id or filtered restore data missing');
   expect('profiles: preload exposes profile APIs',
-    ['getProfiles', 'createProfile', 'updateProfile', 'deleteProfile', 'switchProfile', 'onProfileSwitched', 'onProfilesUpdated'].every(name => preload.includes(name)),
+    ['getProfiles', 'createProfile', 'updateProfile', 'deleteProfile', 'switchProfile', 'getProfileHealth', 'clearProfileData', 'setProfilePin', 'clearProfilePin', 'onProfileSwitched', 'onProfilesUpdated'].every(name => preload.includes(name)),
     'profile preload bridge missing');
   expect('profiles: renderer profile selector and manager exist',
     indexHtml.includes('profile-selector-btn') &&
@@ -260,6 +262,71 @@ function checkProfileFlow() {
       renderer.includes('profile-created') &&
       renderer.includes('profile-updated'),
     'profile create/edit mode separation missing');
+  expect('profiles: settings section exists',
+    indexHtml.includes('settings-tab-profiles') &&
+      indexHtml.includes('settings-profile-list') &&
+      indexHtml.includes('profile-health-grid') &&
+      settings.includes('refreshProfileHealthPanel') &&
+      settings.includes('clearActiveProfileDataFromSettings'),
+    'profiles settings section missing');
+  expect('profiles: data cleanup and health IPC exist',
+    main.includes("ipcMain.handle('profiles-health-get'") &&
+      main.includes("ipcMain.handle('profiles-clear-data'") &&
+      main.includes('clearProfileData') &&
+      main.includes('getProfileHealth'),
+    'profile health or cleanup IPC missing');
+  expect('profiles: PIN lock flow exists',
+    main.includes("ipcMain.handle('profiles-pin-set'") &&
+      main.includes("ipcMain.handle('profiles-pin-clear'") &&
+      main.includes('pbkdf2Sync') &&
+      renderer.includes('showOsloPrompt') &&
+      renderer.includes('showOsloAlert') &&
+      renderer.includes('profile-pin-unlock-title') &&
+      renderer.includes('profile-pin-wrong') &&
+      renderer.includes('isPinError') &&
+      renderer.includes('isRuntimeDialogOpen'),
+    'profile PIN lock flow missing');
+  expect('profiles: PIN and manager modals stay above settings/native content',
+    settings.includes("window.openProfileManager({ fromSettings: true })") &&
+      renderer.includes('openModalAboveSettings') &&
+      renderer.includes("modal.dataset.directOverlay = 'true'") &&
+      renderer.includes('clearProfileMenuOverlap({ clearPreview: !needsPin })') &&
+      modalDialogs.includes('await window.osloContentPreview.show()') &&
+      modalDialogs.includes('window.osloContentPreview?.refreshBounds?.()') &&
+      style.includes('#profile-manager-modal.open') &&
+      style.includes('.modal-overlay.oslo-runtime-dialog'),
+    'profile manager or PIN prompt can still be hidden behind settings/native content');
+  expect('profiles: templates are supported',
+    main.includes('PROFILE_TEMPLATES') &&
+      indexHtml.includes('profile-template-input') &&
+      renderer.includes('profileTemplateDefaults') &&
+      renderer.includes('template })') &&
+      renderer.includes('applyProfileTemplateSuggestion(profileTemplateInput.value') &&
+      renderer.includes("profileFormMode === 'edit'") &&
+      main.includes('applyProfileTemplateSettings') &&
+      main.includes('templateChanged'),
+    'profile templates missing');
+  expect('profiles: locked system profile names are localized',
+    renderer.includes('getProfileDisplayName') &&
+      renderer.includes("profile.isGuest) return getUiText('profile-template-guest'") &&
+      renderer.includes("profile.isDefault) return getProfileTemplateName('personal'") &&
+      settings.includes('getProfileDisplayNameForSettings') &&
+      settings.includes("profile.isGuest) return getText('profile-template-guest'") &&
+      settings.includes("profile.isDefault) return getText('profile-template-personal'"),
+    'default and guest profile names are still rendered from stored Turkish labels');
+  expect('profiles: generated template profile names are localized after language changes',
+    renderer.includes('getTemplateGeneratedNameSuffix') &&
+      renderer.includes('getTemplateNameVariants') &&
+      renderer.includes('Object.values(translations)') &&
+      renderer.includes('return generatedSuffix ? `${templateName} ${generatedSuffix}` : templateName') &&
+      settings.includes('getTemplateGeneratedNameSuffixForSettings') &&
+      settings.includes('getTemplateNameVariantsForSettings'),
+    'created template profile names remain stuck in the language used at creation');
+  expect('profiles: profile theme line exists',
+    renderer.includes('--active-profile-color') &&
+      style.includes('#top-bar::after') &&
+      style.includes('var(--active-profile-color'),
+    'profile color line missing');
   expect('profiles: locked profiles are sorted before custom profiles',
     renderer.includes('a.isDefault ? 0') &&
       renderer.includes('a.isGuest ? 1 : 2') &&
@@ -300,7 +367,7 @@ function checkProfileFlow() {
     style.includes('.profile-menu') && style.includes('z-index: var(--z-menu)') && style.includes('overflow: visible'),
     'profile menu layering styles missing');
   expect('profiles: translations exist for tr/en/fr',
-    i18n.includes("'profile-manager-title'") && i18n.includes("'profile-guest-desc'") && i18n.includes("'profile-delete-confirm'") && i18n.includes("'profile-create'") && i18n.includes("'profile-default-locked'"),
+    i18n.includes("'profile-manager-title'") && i18n.includes("'profile-guest-desc'") && i18n.includes("'profile-delete-confirm'") && i18n.includes("'profile-create'") && i18n.includes("'profile-default-locked'") && i18n.includes("'profiles-settings'") && i18n.includes("'profile-pin-title'") && i18n.includes("'profile-template-work'"),
     'profile translations missing');
 }
 

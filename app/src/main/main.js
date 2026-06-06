@@ -140,6 +140,90 @@ class MemoryStore {
 
 const DEFAULT_PROFILE_ID = 'default';
 const GUEST_PROFILE_ID = 'guest';
+const PROFILE_TEMPLATES = {
+  personal: {
+    name: 'Kişisel',
+    avatar: 'K',
+    color: '#00ddff',
+    settings: {
+      theme: 'dark',
+      accentColor: '#00ddff',
+      trackingProtectionLevel: 'balanced',
+      dangerousDownloadsProtection: 'warn',
+      telemetryEnabled: false,
+      savePasswordsEnabled: true
+    }
+  },
+  work: {
+    name: 'İş',
+    avatar: 'İ',
+    color: '#38bdf8',
+    settings: {
+      theme: 'dark',
+      accentColor: '#38bdf8',
+      trackingProtectionLevel: 'balanced',
+      dangerousDownloadsProtection: 'warn',
+      telemetryEnabled: false,
+      downloadPromptEnabled: true,
+      newtabTransparentWidgets: true
+    }
+  },
+  school: {
+    name: 'Okul',
+    avatar: 'O',
+    color: '#22c55e',
+    settings: {
+      accentColor: '#22c55e',
+      trackingProtectionLevel: 'balanced',
+      sessionRestoreEnabled: true,
+      savePasswordsEnabled: true
+    }
+  },
+  developer: {
+    name: 'Geliştirici',
+    avatar: 'D',
+    color: '#f59e0b',
+    settings: {
+      accentColor: '#f59e0b',
+      trackingProtectionLevel: 'balanced',
+      dangerousDownloadsProtection: 'warn',
+      dnsOverHttpsEnabled: true,
+      dnsOverHttpsProvider: 'cloudflare',
+      clearCacheOnExit: true,
+      newtabTransparentWidgets: true
+    }
+  },
+  privacy: {
+    name: 'Gizlilik',
+    avatar: 'G',
+    color: '#a855f7',
+    settings: {
+      accentColor: '#a855f7',
+      trackingProtectionLevel: 'strict',
+      cookiePolicy: 'block-third-party',
+      clearCookiesOnExit: true,
+      clearHistoryOnExit: true,
+      clearLocalStorageOnExit: true,
+      telemetryEnabled: false,
+      fingerprintProtection: true,
+      globalPrivacyControl: true
+    }
+  },
+  guest: {
+    name: 'Misafir',
+    avatar: 'M',
+    color: '#8b5cf6',
+    settings: {
+      savePasswordsEnabled: false,
+      sessionRestoreEnabled: false,
+      clearHistoryOnExit: true,
+      clearCookiesOnExit: true,
+      clearDownloadsOnExit: true,
+      incognitoForgetDownloads: true,
+      telemetryEnabled: false
+    }
+  }
+};
 const PROFILE_STORE_DEFAULTS = {
   settings: createDefaultSettings,
   bookmarks: () => ({ bookmarks: [] }),
@@ -163,6 +247,9 @@ function createDefaultProfilesState() {
       avatar: 'K',
       color: '#00ddff',
       isDefault: true,
+      template: 'personal',
+      pinEnabled: false,
+      lastCleanedAt: 0,
       createdAt: now,
       updatedAt: now
     }]
@@ -198,18 +285,82 @@ function slugifyProfileId(value) {
 
 function normalizeProfile(profile, fallback = {}) {
   const name = String(profile?.name || fallback.name || 'Profil').trim().slice(0, 48) || 'Profil';
-  const id = profile?.id === DEFAULT_PROFILE_ID
-    ? DEFAULT_PROFILE_ID
+  const id = profile?.id === DEFAULT_PROFILE_ID || profile?.id === GUEST_PROFILE_ID
+    ? profile.id
     : slugifyProfileId(profile?.id || name);
+  const template = Object.prototype.hasOwnProperty.call(PROFILE_TEMPLATES, profile?.template)
+    ? profile.template
+    : (fallback.template || (id === DEFAULT_PROFILE_ID ? 'personal' : 'personal'));
+  const pinSalt = typeof profile?.pinSalt === 'string' ? profile.pinSalt : (fallback.pinSalt || '');
+  const pinHash = typeof profile?.pinHash === 'string' ? profile.pinHash : (fallback.pinHash || '');
   return {
     id,
     name,
     avatar: String(profile?.avatar || name.charAt(0) || 'P').trim().slice(0, 2).toUpperCase(),
     color: /^#[0-9a-f]{6}$/i.test(String(profile?.color || '')) ? profile.color : (fallback.color || '#00ddff'),
     isDefault: id === DEFAULT_PROFILE_ID,
+    isGuest: id === GUEST_PROFILE_ID || !!profile?.isGuest,
+    template,
+    pinEnabled: !!pinHash,
+    pinSalt,
+    pinHash,
+    lastCleanedAt: Number(profile?.lastCleanedAt) || Number(fallback.lastCleanedAt) || 0,
     createdAt: Number(profile?.createdAt) || Date.now(),
     updatedAt: Number(profile?.updatedAt) || Date.now()
   };
+}
+
+function sanitizeProfileForUi(profile) {
+  const normalized = normalizeProfile(profile);
+  const { pinSalt, pinHash, ...safeProfile } = normalized;
+  return {
+    ...safeProfile,
+    hasPin: !!pinHash,
+    pinEnabled: !!pinHash
+  };
+}
+
+function getProfileTemplateSettings(templateId) {
+  const template = PROFILE_TEMPLATES[templateId] || PROFILE_TEMPLATES.personal;
+  return { ...template.settings };
+}
+
+function applyProfileTemplateSettings(profileId, templateId) {
+  const store = getProfileStoreInstance(profileId, 'settings');
+  Object.entries(getProfileTemplateSettings(templateId)).forEach(([key, value]) => {
+    if (Object.prototype.hasOwnProperty.call(FACTORY_DEFAULT_SETTINGS, key)) {
+      store.set(key, value);
+    }
+  });
+  if (profileId === activeProfileId) {
+    applyActiveProfileRuntimeSettings();
+  }
+}
+
+function hashProfilePin(pin, salt) {
+  return crypto.pbkdf2Sync(String(pin || ''), String(salt || ''), 120000, 32, 'sha256').toString('hex');
+}
+
+function createProfilePinSecret(pin) {
+  const value = String(pin || '').trim();
+  if (!/^\d{4,8}$/.test(value)) {
+    throw new Error('Invalid profile PIN.');
+  }
+  const salt = crypto.randomBytes(16).toString('hex');
+  return {
+    pinSalt: salt,
+    pinHash: hashProfilePin(value, salt)
+  };
+}
+
+function verifyProfilePin(profile, pin) {
+  if (!profile?.pinHash) return true;
+  const candidate = hashProfilePin(pin, profile.pinSalt || '');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(candidate, 'hex'), Buffer.from(profile.pinHash, 'hex'));
+  } catch (error) {
+    return false;
+  }
 }
 
 function getPersistedProfiles() {
@@ -239,6 +390,9 @@ function getGuestProfile() {
     avatar: 'M',
     color: '#8b5cf6',
     isGuest: true,
+    template: 'guest',
+    pinEnabled: false,
+    lastCleanedAt: 0,
     createdAt: Date.now(),
     updatedAt: Date.now()
   };
@@ -264,6 +418,53 @@ function createProfileStore(profileId, storeName) {
   return new Store(getProfileStoreFileName(profileId, storeName), defaults);
 }
 
+function getActiveProfileStoreByName(storeName) {
+  return {
+    settings: settingsStore,
+    bookmarks: bookmarksStore,
+    history: historyStore,
+    downloads: downloadsStore,
+    spaces: spacesStore,
+    session: sessionStore,
+    passwords: passwordsStore,
+    permissions: permissionsStore,
+    certificateExceptions: certificateExceptionsStore,
+    passwordBreachCache: passwordBreachCacheStore
+  }[storeName] || null;
+}
+
+function getProfileStoreInstance(profileId, storeName) {
+  if (profileId === activeProfileId) {
+    return getActiveProfileStoreByName(storeName) || createProfileStore(profileId, storeName);
+  }
+  return createProfileStore(profileId, storeName);
+}
+
+function getProfileSpaces(profileId) {
+  const store = getProfileStoreInstance(profileId, 'spaces');
+  const spaces = store.get('spaces') || ['Genel'];
+  return (Array.isArray(spaces) && spaces.length ? spaces : ['Genel'])
+    .map(space => typeof space === 'string' ? space : space?.name)
+    .filter(Boolean);
+}
+
+function getProfileSessions(profileId) {
+  if (profileId === GUEST_PROFILE_ID) {
+    return activeProfileId === GUEST_PROFILE_ID ? getManagedSessions(true) : [];
+  }
+  return getProfileSpaces(profileId).map(space => getSessionForSpace(space, false, profileId));
+}
+
+function countArrayStore(profileId, storeName, key) {
+  const value = getProfileStoreInstance(profileId, storeName).get(key);
+  return Array.isArray(value) ? value.length : 0;
+}
+
+function countObjectStore(profileId, storeName, key) {
+  const value = getProfileStoreInstance(profileId, storeName).get(key);
+  return value && typeof value === 'object' ? Object.keys(value).length : 0;
+}
+
 function loadProfileStores(profileId) {
   activeProfileId = profileId || DEFAULT_PROFILE_ID;
   settingsStore = createProfileStore(activeProfileId, 'settings');
@@ -280,7 +481,7 @@ function loadProfileStores(profileId) {
 }
 
 function getProfileSnapshot() {
-  const profiles = [...getPersistedProfiles(), getGuestProfile()];
+  const profiles = [...getPersistedProfiles(), getGuestProfile()].map(sanitizeProfileForUi);
   const activeProfile = profiles.find(profile => profile.id === activeProfileId) || profiles[0];
   return {
     activeProfileId,
@@ -2907,10 +3108,14 @@ function applyActiveProfileRuntimeSettings() {
   applyBackgroundTabThrottling();
 }
 
-async function switchActiveProfile(profileId) {
+async function switchActiveProfile(profileId, options = {}) {
   const targetId = profileId === GUEST_PROFILE_ID ? GUEST_PROFILE_ID : String(profileId || DEFAULT_PROFILE_ID);
-  const validProfile = targetId === GUEST_PROFILE_ID || getPersistedProfiles().some(profile => profile.id === targetId);
-  if (!validProfile) throw new Error('Profile not found.');
+  const targetProfile = getProfileById(targetId);
+  if (!targetProfile) throw new Error('Profile not found.');
+
+  if (targetProfile.pinHash && !verifyProfilePin(targetProfile, options.pin || '')) {
+    throw new Error('Profile PIN is invalid.');
+  }
 
   if (targetId === activeProfileId) {
     return buildProfilePayload();
@@ -2956,6 +3161,135 @@ function deleteProfileDataFiles(profileId) {
   });
 }
 
+function getProfileById(profileId) {
+  const id = profileId === GUEST_PROFILE_ID ? GUEST_PROFILE_ID : String(profileId || DEFAULT_PROFILE_ID);
+  if (id === GUEST_PROFILE_ID) return normalizeProfile(getGuestProfile());
+  return getPersistedProfiles().find(profile => profile.id === id) || null;
+}
+
+function updatePersistedProfile(profileId, patch = {}) {
+  if (!profileId || profileId === GUEST_PROFILE_ID) return null;
+  const profiles = getPersistedProfiles();
+  const index = profiles.findIndex(profile => profile.id === profileId);
+  if (index < 0) return null;
+  profiles[index] = normalizeProfile({
+    ...profiles[index],
+    ...patch,
+    updatedAt: Date.now()
+  }, profiles[index]);
+  profilesStore.set('profiles', profiles);
+  return profiles[index];
+}
+
+function getPasswordRiskSnapshotForProfile(profileId) {
+  const passwords = getProfileStoreInstance(profileId, 'passwords').get('passwords') || [];
+  const publicList = passwords.map(toPublicCredential);
+  const byPassword = new Map();
+  publicList.forEach(item => {
+    const value = item.password || '';
+    if (!value) return;
+    if (!byPassword.has(value)) byPassword.set(value, []);
+    byPassword.get(value).push(item);
+  });
+
+  let weak = 0;
+  let reused = 0;
+  publicList.forEach(item => {
+    if (isWeakPasswordValue(item.password)) weak += 1;
+    if ((byPassword.get(item.password || '') || []).length > 1) reused += 1;
+  });
+
+  return {
+    total: publicList.length,
+    weak,
+    reused,
+    breached: 0
+  };
+}
+
+async function getProfileHealth(profileId) {
+  const profile = getProfileById(profileId);
+  if (!profile) throw new Error('Profile not found.');
+  const id = profile.id;
+  const settings = getProfileStoreInstance(id, 'settings').data || {};
+  const sessions = getProfileSessions(id);
+  const cookieCounts = await Promise.all(sessions.map(profileSession => (
+    profileSession.cookies.get({}).then(cookies => cookies.length).catch(() => 0)
+  )));
+  const cookies = cookieCounts.reduce((sum, count) => sum + count, 0);
+  const passwordRisk = getPasswordRiskSnapshotForProfile(id);
+  const permissions = countObjectStore(id, 'permissions', 'permissions');
+  const certificateExceptions = countObjectStore(id, 'certificateExceptions', 'exceptions');
+  const history = countArrayStore(id, 'history', 'history');
+  const bookmarks = countArrayStore(id, 'bookmarks', 'bookmarks');
+  const downloads = countArrayStore(id, 'downloads', 'downloads');
+  const tabs = countArrayStore(id, 'session', 'tabs');
+  const spaces = getProfileSpaces(id).length;
+  const blockedCount = Number(settings.blockedCount) || 0;
+  const penalty = Math.min(80, (passwordRisk.weak * 8) + (passwordRisk.reused * 6) + (permissions * 2) + (certificateExceptions * 4));
+  const securityScore = Math.max(0, Math.min(100, 100 - penalty));
+
+  return {
+    profile: sanitizeProfileForUi(profile),
+    health: {
+      securityScore,
+      passwords: passwordRisk,
+      permissions,
+      certificateExceptions,
+      history,
+      bookmarks,
+      downloads,
+      cookies,
+      tabs,
+      spaces,
+      blockedCount,
+      lastCleanedAt: profile.lastCleanedAt || 0
+    }
+  };
+}
+
+async function clearProfileData(profileId, categories = []) {
+  const profile = getProfileById(profileId);
+  if (!profile) throw new Error('Profile not found.');
+  const id = profile.id;
+  const categorySet = new Set(Array.isArray(categories) && categories.length ? categories : ['history', 'downloads', 'cache', 'cookies']);
+  const sessions = getProfileSessions(id);
+
+  if (categorySet.has('history')) getProfileStoreInstance(id, 'history').replace(PROFILE_STORE_DEFAULTS.history());
+  if (categorySet.has('downloads')) getProfileStoreInstance(id, 'downloads').replace(PROFILE_STORE_DEFAULTS.downloads());
+  if (categorySet.has('bookmarks')) getProfileStoreInstance(id, 'bookmarks').replace(PROFILE_STORE_DEFAULTS.bookmarks());
+  if (categorySet.has('passwords')) getProfileStoreInstance(id, 'passwords').replace(PROFILE_STORE_DEFAULTS.passwords());
+  if (categorySet.has('permissions')) {
+    getProfileStoreInstance(id, 'permissions').replace(PROFILE_STORE_DEFAULTS.permissions());
+    getProfileStoreInstance(id, 'certificateExceptions').replace(PROFILE_STORE_DEFAULTS.certificateExceptions());
+  }
+  if (categorySet.has('sessions')) getProfileStoreInstance(id, 'session').replace(PROFILE_STORE_DEFAULTS.session());
+  if (categorySet.has('settings')) {
+    const baseSettings = createDefaultSettings();
+    Object.assign(baseSettings, getProfileTemplateSettings(profile.template || 'personal'));
+    getProfileStoreInstance(id, 'settings').replace(baseSettings);
+    if (id === activeProfileId) applyActiveProfileRuntimeSettings();
+  }
+
+  const storageTasks = [];
+  if (categorySet.has('cache')) {
+    storageTasks.push(...sessions.map(profileSession => profileSession.clearCache().catch(() => null)));
+  }
+  if (categorySet.has('cookies') || categorySet.has('siteData')) {
+    const storages = categorySet.has('siteData')
+      ? ['appcache', 'cookies', 'filesystem', 'indexdb', 'localstorage', 'shadercache', 'websql', 'serviceworkers', 'cachestorage']
+      : ['cookies'];
+    storageTasks.push(...sessions.map(profileSession => profileSession.clearStorageData({ storages }).catch(() => null)));
+  }
+  await Promise.all(storageTasks);
+
+  updatePersistedProfile(id, { lastCleanedAt: Date.now() });
+  return {
+    ...buildProfilePayload(),
+    profileHealth: await getProfileHealth(id)
+  };
+}
+
 ipcMain.handle('profiles-get', (event) => {
   assertMainUiSender(event);
   return buildProfilePayload();
@@ -2963,24 +3297,30 @@ ipcMain.handle('profiles-get', (event) => {
 
 ipcMain.handle('profiles-create', async (event, profileInput = {}) => {
   assertMainUiSender(event);
-  const name = String(profileInput.name || '').trim().slice(0, 48);
+  const templateId = Object.prototype.hasOwnProperty.call(PROFILE_TEMPLATES, profileInput.template)
+    ? profileInput.template
+    : 'personal';
+  const template = PROFILE_TEMPLATES[templateId] || PROFILE_TEMPLATES.personal;
+  const name = String(profileInput.name || template.name || '').trim().slice(0, 48);
   if (!name) throw new Error('Profile name is required.');
 
   const now = Date.now();
   const profile = normalizeProfile({
     id: createUniqueProfileId(name),
     name,
-    avatar: profileInput.avatar,
-    color: profileInput.color,
+    avatar: profileInput.avatar || template.avatar,
+    color: profileInput.color || template.color,
+    template: templateId,
     createdAt: now,
     updatedAt: now
-  }, { color: '#00ddff' });
+  }, { color: template.color || '#00ddff' });
 
   const profiles = getPersistedProfiles();
   profiles.push(profile);
   profilesStore.set('profiles', profiles);
   saveSession();
   loadProfileStores(profile.id);
+  applyProfileTemplateSettings(profile.id, templateId);
   profilesStore.set('activeProfileId', profile.id);
   closeAllTabsForProfileSwitch();
   applyActiveProfileRuntimeSettings();
@@ -3002,14 +3342,22 @@ ipcMain.handle('profiles-update', async (event, profileInput = {}) => {
   if (index < 0) throw new Error('Profile not found.');
 
   const current = profiles[index];
+  const templateId = Object.prototype.hasOwnProperty.call(PROFILE_TEMPLATES, profileInput.template)
+    ? profileInput.template
+    : current.template;
+  const templateChanged = templateId !== current.template;
   profiles[index] = normalizeProfile({
     ...current,
     name: profileInput.name || current.name,
     avatar: profileInput.avatar || current.avatar,
     color: profileInput.color || current.color,
+    template: templateId,
     updatedAt: Date.now()
   }, current);
   profilesStore.set('profiles', profiles);
+  if (templateChanged) {
+    applyProfileTemplateSettings(id, templateId);
+  }
 
   const payload = buildProfilePayload();
   windows.forEach(win => sendToUI(win, 'ui-profiles-updated', payload));
@@ -3036,9 +3384,51 @@ ipcMain.handle('profiles-delete', async (event, profileId) => {
   return payload;
 });
 
-ipcMain.handle('profiles-switch', async (event, profileId) => {
+ipcMain.handle('profiles-switch', async (event, payload) => {
   assertMainUiSender(event);
-  return switchActiveProfile(profileId);
+  const profileId = typeof payload === 'object' && payload ? payload.profileId : payload;
+  const pin = typeof payload === 'object' && payload ? payload.pin : '';
+  return switchActiveProfile(profileId, { pin });
+});
+
+ipcMain.handle('profiles-health-get', async (event, profileId) => {
+  assertMainUiSender(event);
+  return getProfileHealth(profileId || activeProfileId);
+});
+
+ipcMain.handle('profiles-clear-data', async (event, payload = {}) => {
+  assertMainUiSender(event);
+  const profileId = String(payload.profileId || activeProfileId);
+  const categories = Array.isArray(payload.categories) ? payload.categories : [];
+  return clearProfileData(profileId, categories);
+});
+
+ipcMain.handle('profiles-pin-set', (event, payload = {}) => {
+  assertMainUiSender(event);
+  const profileId = String(payload.profileId || activeProfileId);
+  if (profileId === GUEST_PROFILE_ID) throw new Error('Guest profile cannot be locked.');
+  const profile = getProfileById(profileId);
+  if (!profile) throw new Error('Profile not found.');
+  const secret = createProfilePinSecret(payload.pin);
+  updatePersistedProfile(profileId, secret);
+  const result = buildProfilePayload();
+  windows.forEach(win => sendToUI(win, 'ui-profiles-updated', result));
+  return result;
+});
+
+ipcMain.handle('profiles-pin-clear', (event, payload = {}) => {
+  assertMainUiSender(event);
+  const profileId = String(payload.profileId || activeProfileId);
+  if (profileId === GUEST_PROFILE_ID) throw new Error('Guest profile cannot be locked.');
+  const profile = getProfileById(profileId);
+  if (!profile) throw new Error('Profile not found.');
+  if (profile.pinHash && !verifyProfilePin(profile, payload.pin || '')) {
+    throw new Error('Profile PIN is invalid.');
+  }
+  updatePersistedProfile(profileId, { pinSalt: '', pinHash: '' });
+  const result = buildProfilePayload();
+  windows.forEach(win => sendToUI(win, 'ui-profiles-updated', result));
+  return result;
 });
 
 // IPC Listeners

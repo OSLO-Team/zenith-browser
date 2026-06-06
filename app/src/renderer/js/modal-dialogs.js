@@ -34,19 +34,36 @@ function createDialogOverlay({ title, message, danger = false, confirm = false }
   return overlay;
 }
 
+async function openRuntimeDialog(overlay, afterOpen) {
+  if (typeof window.osloContentPreview?.show === 'function') {
+    await window.osloContentPreview.show();
+  }
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => {
+    overlay.classList.add('open');
+    window.osloContentPreview?.refreshBounds?.();
+    afterOpen?.();
+  });
+}
+
+function closeRuntimeDialog(overlay, resolve, result) {
+  overlay.classList.remove('open');
+  setTimeout(() => {
+    overlay.remove();
+    window.osloContentPreview?.refreshBounds?.();
+    window.osloContentPreview?.clearSoon?.();
+    resolve(result);
+  }, 160);
+}
+
 export function showOsloAlert(title, message) {
-  return new Promise(resolve => {
+  return new Promise(async resolve => {
     const overlay = createDialogOverlay({ title, message });
     const close = () => {
-      overlay.classList.remove('open');
-      setTimeout(() => {
-        overlay.remove();
-        resolve();
-      }, 160);
+      closeRuntimeDialog(overlay, resolve);
     };
 
-    document.body.appendChild(overlay);
-    requestAnimationFrame(() => overlay.classList.add('open'));
+    await openRuntimeDialog(overlay);
     overlay.querySelector('.btn-ok')?.addEventListener('click', close);
     overlay.querySelector('.modal-close-btn')?.addEventListener('click', close);
     overlay.addEventListener('click', event => {
@@ -56,23 +73,52 @@ export function showOsloAlert(title, message) {
 }
 
 export function showOsloConfirm(title, message, options = {}) {
-  return new Promise(resolve => {
+  return new Promise(async resolve => {
     const overlay = createDialogOverlay({ title, message, danger: options.danger !== false, confirm: true });
     const cleanup = result => {
-      overlay.classList.remove('open');
-      setTimeout(() => {
-        overlay.remove();
-        resolve(result);
-      }, 160);
+      closeRuntimeDialog(overlay, resolve, result);
     };
 
-    document.body.appendChild(overlay);
-    requestAnimationFrame(() => overlay.classList.add('open'));
+    await openRuntimeDialog(overlay);
     overlay.querySelector('.btn-ok')?.addEventListener('click', () => cleanup(true));
     overlay.querySelector('.btn-cancel')?.addEventListener('click', () => cleanup(false));
     overlay.querySelector('.modal-close-btn')?.addEventListener('click', () => cleanup(false));
     overlay.addEventListener('click', event => {
       if (event.target === overlay) cleanup(false);
+    });
+  });
+}
+
+export function showOsloPrompt(title, message, options = {}) {
+  return new Promise(async resolve => {
+    const overlay = createDialogOverlay({ title, message, danger: false, confirm: true });
+    const body = overlay.querySelector('.modal-body');
+    const okButton = overlay.querySelector('.btn-ok');
+    const input = document.createElement('input');
+    input.className = 'settings-input';
+    input.type = options.type || 'text';
+    input.maxLength = options.maxLength || 64;
+    input.placeholder = options.placeholder || '';
+    input.autocomplete = 'off';
+    input.style.marginTop = '14px';
+    input.style.width = '100%';
+    if (body) body.appendChild(input);
+    if (okButton) okButton.textContent = options.confirmText || getText('modal-ok', 'Tamam');
+
+    const cleanup = result => {
+      closeRuntimeDialog(overlay, resolve, result);
+    };
+
+    await openRuntimeDialog(overlay, () => input.focus());
+    overlay.querySelector('.btn-ok')?.addEventListener('click', () => cleanup(input.value));
+    overlay.querySelector('.btn-cancel')?.addEventListener('click', () => cleanup(null));
+    overlay.querySelector('.modal-close-btn')?.addEventListener('click', () => cleanup(null));
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Enter') cleanup(input.value);
+      if (event.key === 'Escape') cleanup(null);
+    });
+    overlay.addEventListener('click', event => {
+      if (event.target === overlay) cleanup(null);
     });
   });
 }

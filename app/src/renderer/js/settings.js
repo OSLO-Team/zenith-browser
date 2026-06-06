@@ -1,9 +1,9 @@
 // OSLO Browser - Settings Management Module
 import { state } from './state.js';
 import { applyLanguage, translations } from './i18n.js';
-import { renderBookmarks, renderBookmarksBar } from './panels.js';
+import { renderBookmarks, renderBookmarksBar, renderDownloads } from './panels.js';
 import { updateBookmarkIcon } from './tabs.js';
-import { showOsloAlert as showCustomAlert, showOsloConfirm as showCustomConfirm } from './modal-dialogs.js';
+import { showOsloAlert as showCustomAlert, showOsloConfirm as showCustomConfirm, showOsloPrompt as showCustomPrompt } from './modal-dialogs.js';
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -1626,6 +1626,238 @@ function closePrivacyModal(id) {
   window.dispatchEvent(new Event('resize'));
 }
 
+function getManagedProfilesForSettings() {
+  return [...(state.profiles || [])].sort((a, b) => {
+    const rankA = a.isDefault ? 0 : (a.isGuest ? 1 : 2);
+    const rankB = b.isDefault ? 0 : (b.isGuest ? 1 : 2);
+    if (rankA !== rankB) return rankA - rankB;
+    return getProfileDisplayNameForSettings(a).localeCompare(getProfileDisplayNameForSettings(b), state.currentLang || 'tr');
+  });
+}
+
+function getProfileDisplayNameForSettings(profile) {
+  if (!profile) return getText('profile', 'Profil');
+  if (profile.isGuest) return getText('profile-template-guest', 'Misafir');
+  if (profile.isDefault) return getText('profile-template-personal', 'Kişisel');
+  const generatedSuffix = getTemplateGeneratedNameSuffixForSettings(profile);
+  if (generatedSuffix !== null) {
+    const templateName = getText(`profile-template-${profile.template || 'personal'}`, profile.template || 'personal');
+    return generatedSuffix ? `${templateName} ${generatedSuffix}` : templateName;
+  }
+  return profile.name || getText('profile', 'Profil');
+}
+
+function getTemplateNameVariantsForSettings(templateId) {
+  const key = `profile-template-${templateId || 'personal'}`;
+  const variants = new Set();
+  Object.values(translations).forEach(dictionary => {
+    const value = dictionary?.[key];
+    if (value) variants.add(value);
+  });
+  return [...variants].filter(Boolean);
+}
+
+function getTemplateGeneratedNameSuffixForSettings(profile) {
+  if (!profile?.template) return null;
+  const rawName = String(profile.name || '').trim();
+  if (!rawName) return null;
+  const rawNameLower = rawName.toLocaleLowerCase();
+
+  for (const variant of getTemplateNameVariantsForSettings(profile.template)) {
+    const baseName = String(variant || '').trim();
+    if (!baseName) continue;
+
+    const baseNameLower = baseName.toLocaleLowerCase();
+    if (rawNameLower === baseNameLower) return '';
+    if (rawNameLower.startsWith(`${baseNameLower} `)) {
+      const suffix = rawName.slice(baseName.length).trim();
+      if (/^\d+$/.test(suffix)) return suffix;
+    }
+  }
+  return null;
+}
+
+function getProfileDisplayAvatarForSettings(profile) {
+  if (!profile) return 'P';
+  if (profile.isDefault || profile.isGuest) {
+    return getProfileDisplayNameForSettings(profile).trim().charAt(0).toUpperCase() || (profile.avatar || 'P');
+  }
+  return profile.avatar || (profile.name || 'P').charAt(0).toUpperCase();
+}
+
+function formatProfileDate(timestamp) {
+  const value = Number(timestamp) || 0;
+  if (!value) return getText('profile-health-never-cleaned', 'Henüz yok');
+  try {
+    return new Intl.DateTimeFormat(state.currentLang || 'tr', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(new Date(value));
+  } catch (error) {
+    return new Date(value).toLocaleString();
+  }
+}
+
+function renderProfileSettingsPanel() {
+  const list = document.getElementById('settings-profile-list');
+  const activeProfile = state.activeProfile || state.profiles.find(profile => profile.id === state.activeProfileId);
+  const pinStatus = document.getElementById('profile-pin-status');
+  if (pinStatus) {
+    pinStatus.textContent = activeProfile?.pinEnabled || activeProfile?.hasPin
+      ? getText('profile-pin-enabled', 'Etkin')
+      : getText('profile-pin-disabled', 'Kapalı');
+  }
+
+  if (!list) return;
+  const profiles = getManagedProfilesForSettings();
+  list.innerHTML = profiles.map(profile => {
+    const active = profile.id === state.activeProfileId;
+    const displayName = getProfileDisplayNameForSettings(profile);
+    const lockText = profile.pinEnabled || profile.hasPin
+      ? getText('profile-pin-enabled', 'Etkin')
+      : (profile.isDefault || profile.isGuest ? getText('profile-locked', 'Kilitli') : '');
+    return `
+      <div class="settings-profile-row ${active ? 'active' : ''}">
+        <span class="profile-avatar" style="--profile-color: ${escapeHtml(profile.color || '#00ddff')}">${escapeHtml(getProfileDisplayAvatarForSettings(profile))}</span>
+        <div class="settings-profile-row-main">
+          <strong>${escapeHtml(displayName || '-')}</strong>
+          <span>${escapeHtml(getText(`profile-template-${profile.template || 'personal'}`, profile.template || 'personal'))}</span>
+        </div>
+        <span class="profile-manager-badge">${escapeHtml(active ? getText('profile-current', 'Mevcut') : lockText)}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderProfileHealth(healthPayload) {
+  const profile = healthPayload?.profile || state.activeProfile;
+  const health = healthPayload?.health || {};
+  const riskyPasswords = (health.passwords?.weak || 0) + (health.passwords?.reused || 0) + (health.passwords?.breached || 0);
+  const activeName = document.getElementById('profile-health-active-name');
+  const setText = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = String(value);
+  };
+
+  if (activeName) {
+    const displayName = getProfileDisplayNameForSettings(profile);
+    activeName.textContent = profile ? `${getText('profile-current', 'Mevcut')}: ${displayName}` : '-';
+  }
+  setText('profile-health-score', Number.isFinite(Number(health.securityScore)) ? `${health.securityScore}/100` : '--');
+  setText('profile-health-passwords', health.passwords?.total ?? '-');
+  setText('profile-health-risky-passwords', riskyPasswords);
+  setText('profile-health-permissions', health.permissions ?? '-');
+  setText('profile-health-cookies', health.cookies ?? '-');
+  setText('profile-health-blocked', health.blockedCount ?? '-');
+  setText('profile-health-tabs', health.tabs ?? '-');
+  setText('profile-health-last-cleaned', formatProfileDate(health.lastCleanedAt));
+}
+
+async function refreshProfileHealthPanel() {
+  if (typeof window.oslo?.getProfileHealth !== 'function') return;
+  try {
+    renderProfileSettingsPanel();
+    const payload = await window.oslo.getProfileHealth(state.activeProfileId || 'default');
+    renderProfileHealth(payload);
+  } catch (error) {
+    console.error('Profile health failed:', error);
+  }
+}
+
+function getSelectedProfileCleanCategories() {
+  return Array.from(document.querySelectorAll('.profile-clean-grid input[type="checkbox"]:checked'))
+    .map(input => input.value)
+    .filter(Boolean);
+}
+
+async function clearActiveProfileDataFromSettings() {
+  const categories = getSelectedProfileCleanCategories();
+  if (!categories.length) {
+    await showCustomAlert(getText('profile-data-management', 'Profil Verilerini Yönet'), getText('profile-clean-empty', 'Temizlenecek veri seçin.'));
+    return;
+  }
+
+  const confirmed = await showCustomConfirm(
+    getText('profile-data-management', 'Profil Verilerini Yönet'),
+    getText('profile-clean-confirm', 'Seçili veriler sadece aktif profilden temizlenecek. Devam edilsin mi?'),
+    { danger: true }
+  );
+  if (!confirmed) return;
+
+  try {
+    const payload = await window.oslo.clearProfileData(state.activeProfileId || 'default', categories);
+    if (payload?.settings) {
+      Object.entries(payload.settings).forEach(([key, value]) => applySettingChange(key, value));
+    }
+    if (Array.isArray(payload?.bookmarks)) {
+      state.bookmarks = payload.bookmarks;
+      renderBookmarks();
+      renderBookmarksBar();
+      updateBookmarkIcon();
+    }
+    if (Array.isArray(payload?.downloads)) {
+      state.downloads = {};
+      payload.downloads.forEach(item => {
+        if (item?.id) state.downloads[item.id] = item;
+      });
+      renderDownloads();
+    }
+    if (Array.isArray(payload?.spaces)) {
+      state.spaces = payload.spaces;
+    }
+    await refreshProfileHealthPanel();
+    await showCustomAlert(getText('profile-data-management', 'Profil Verilerini Yönet'), getText('profile-clean-success', 'Profil verileri temizlendi.'));
+  } catch (error) {
+    console.error('Profile data clear failed:', error);
+    await showCustomAlert(getText('profile-data-management', 'Profil Verilerini Yönet'), getText('profile-clean-error', 'Profil verileri temizlenemedi.'));
+  }
+}
+
+async function setActiveProfilePinFromSettings() {
+  const activeProfile = state.activeProfile;
+  if (!activeProfile || activeProfile.isGuest) return;
+  const pin = await showCustomPrompt(
+    getText('profile-pin-title', 'Profil PIN Kilidi'),
+    getText('profile-pin-new-desc', '4-8 haneli yeni PIN girin.'),
+    { type: 'password', maxLength: 8, placeholder: '••••', confirmText: getText('profile-pin-set', 'PIN Ayarla') }
+  );
+  if (!pin) return;
+  try {
+    const payload = await window.oslo.setProfilePin(activeProfile.id, pin);
+    state.profiles = payload.profiles || state.profiles;
+    state.activeProfile = payload.activeProfile || state.activeProfile;
+    if (typeof window.renderProfiles === 'function') window.renderProfiles();
+    renderProfileSettingsPanel();
+    await showCustomAlert(getText('profile-pin-title', 'Profil PIN Kilidi'), getText('profile-pin-set-success', 'Profil PIN kilidi etkinleştirildi.'));
+  } catch (error) {
+    await showCustomAlert(getText('profile-pin-title', 'Profil PIN Kilidi'), getText('profile-pin-invalid', 'PIN 4-8 haneli olmalı.'));
+  }
+}
+
+async function clearActiveProfilePinFromSettings() {
+  const activeProfile = state.activeProfile;
+  if (!activeProfile || activeProfile.isGuest || !(activeProfile.pinEnabled || activeProfile.hasPin)) return;
+  const pin = await showCustomPrompt(
+    getText('profile-pin-title', 'Profil PIN Kilidi'),
+    getText('profile-pin-current-desc', 'PIN kilidini kaldırmak için mevcut PIN’i girin.'),
+    { type: 'password', maxLength: 8, placeholder: '••••', confirmText: getText('profile-pin-clear', 'PIN Kaldır') }
+  );
+  if (!pin) return;
+  try {
+    const payload = await window.oslo.clearProfilePin(activeProfile.id, pin);
+    state.profiles = payload.profiles || state.profiles;
+    state.activeProfile = payload.activeProfile || state.activeProfile;
+    if (typeof window.renderProfiles === 'function') window.renderProfiles();
+    renderProfileSettingsPanel();
+    await showCustomAlert(getText('profile-pin-title', 'Profil PIN Kilidi'), getText('profile-pin-clear-success', 'Profil PIN kilidi kaldırıldı.'));
+  } catch (error) {
+    await showCustomAlert(getText('profile-pin-title', 'Profil PIN Kilidi'), getText('profile-pin-wrong', 'PIN doğrulanamadı.'));
+  }
+}
+
 export function initSettings() {
   const settingsOverlay = document.getElementById('settings-overlay');
   const closeSettings = document.getElementById('close-settings');
@@ -1661,6 +1893,8 @@ export function initSettings() {
       } else if (tabName === 'ram') {
         initTaskManagerControls();
         ensureTaskManagerLiveRefresh({ immediate: true });
+      } else if (tabName === 'profiles') {
+        refreshProfileHealthPanel();
       }
     });
   });
@@ -1881,6 +2115,19 @@ export function initSettings() {
   bindTaskManagerLifecycleListeners();
   initTaskManagerControls();
   ensureTaskManagerLiveRefresh();
+  renderProfileSettingsPanel();
+  refreshProfileHealthPanel();
+  window.addEventListener('oslo-profiles-rendered', () => {
+    renderProfileSettingsPanel();
+    refreshProfileHealthPanel();
+  });
+  document.getElementById('settings-open-profile-manager')?.addEventListener('click', () => {
+    if (typeof window.openProfileManager === 'function') window.openProfileManager({ fromSettings: true });
+  });
+  document.getElementById('settings-refresh-profile-health')?.addEventListener('click', refreshProfileHealthPanel);
+  document.getElementById('settings-clear-active-profile-data')?.addEventListener('click', clearActiveProfileDataFromSettings);
+  document.getElementById('settings-set-profile-pin')?.addEventListener('click', setActiveProfilePinFromSettings);
+  document.getElementById('settings-clear-profile-pin')?.addEventListener('click', clearActiveProfilePinFromSettings);
 
   const settingsDnsCheckbox = document.getElementById('settings-dns-checkbox');
   const settingsDnsProvider = document.getElementById('settings-dns-provider');
@@ -2156,6 +2403,8 @@ export function initSettings() {
 
   window.addEventListener('language-changed', () => {
     updateAppearanceControl('newtabWallpaper', appearanceSettings.newtabWallpaper);
+    renderProfileSettingsPanel();
+    refreshProfileHealthPanel();
     const passwordsTab = document.getElementById('settings-tab-passwords');
     if (passwordsTab && passwordsTab.classList.contains('active')) {
       renderSavedPasswords();
@@ -2490,8 +2739,8 @@ export function loadAboutTabSystemInfo() {
     const valV8 = document.getElementById('sys-val-v8');
     const valUseragent = document.getElementById('sys-val-useragent');
 
-    if (versionDisplay) versionDisplay.textContent = info.appVersion || '1.0.0-beta.5';
-    if (versionDisplayMain) versionDisplayMain.textContent = info.appVersion || '1.0.0-beta.5';
+    if (versionDisplay) versionDisplay.textContent = info.appVersion || '1.0.0.alpha.01';
+    if (versionDisplayMain) versionDisplayMain.textContent = info.appVersion || '1.0.0.alpha.01';
     if (valElectron) valElectron.textContent = info.electron || '-';
     if (valChrome) valChrome.textContent = info.chrome || '-';
     if (valNode) valNode.textContent = info.node || '-';

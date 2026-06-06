@@ -818,6 +818,103 @@ body.reduce-motion *::after {
   display: none;
 }
 
+.settings-profile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-profile-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.settings-profile-row.active {
+  border-color: var(--accent-color);
+  background: var(--accent-soft);
+}
+
+.settings-profile-row-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.settings-profile-row-main strong,
+.settings-profile-row-main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-profile-row-main span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.profile-health-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.profile-health-grid > div {
+  min-width: 0;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.profile-health-grid span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.profile-health-grid strong {
+  font-size: 16px;
+  color: var(--text-main);
+}
+
+.profile-health-score {
+  border-color: var(--accent-color) !important;
+  background: var(--accent-soft) !important;
+}
+
+.profile-clean-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin: 12px 0;
+}
+
+.profile-clean-grid label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-main);
+  font-size: 12px;
+}
+
+.profile-clean-grid input {
+  accent-color: var(--accent-color);
+}
+
 .danger-btn {
   background: rgba(239, 68, 68, 0.12);
   border-color: rgba(239, 68, 68, 0.4);
@@ -868,6 +965,18 @@ body.reduce-motion *::after {
 
 #top-bar > * {
   transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+#top-bar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--active-profile-color, var(--accent-color));
+  opacity: 0.72;
+  pointer-events: none;
 }
 
 body.topbar-auto-hide #top-bar {
@@ -2284,6 +2393,14 @@ body.light-mode .space-btn.active {
 .modal-overlay.open {
   display: flex;
   opacity: 1;
+}
+
+#profile-manager-modal.open {
+  z-index: 25000;
+}
+
+.modal-overlay.oslo-runtime-dialog {
+  z-index: 27000;
 }
 
 .modal-card {
